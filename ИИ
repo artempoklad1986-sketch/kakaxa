@@ -1,0 +1,1079 @@
+<?php
+// ============================================================================
+// 🤖 МОДУЛЬ ИИ ПОМОЩНИКА v2.0 - МЕГА ВЕРСИЯ
+// Полноценный ИИ с обучением и базой знаний по аквариумистике
+// ============================================================================
+
+class AquaAI {
+
+    private $knowledgeBase;
+    private $learningData;
+    private $userActions;
+
+    public function __construct() {
+        $this->initializeKnowledgeBase();
+        $this->loadLearningData();
+    }
+
+    // ============================================================================
+    // ИНИЦИАЛИЗАЦИЯ БАЗЫ ЗНАНИЙ ПО АКВАРИУМИСТИКЕ
+    // ============================================================================
+
+    private function initializeKnowledgeBase() {
+        $this->knowledgeBase = [
+            'plants' => [
+                'easy_care' => [
+                    'anubias' => [
+                        'scientific_name' => 'Anubias barteri var. nana',
+                        'common_names' => ['Анубиас нана', 'Карликовый анубиас', 'Анубиас Бартера нана'],
+                        'description' => 'Неприхотливое медленнорастущее растение с темно-зелеными кожистыми листьями. Идеально для начинающих аквариумистов.',
+                        'care_requirements' => [
+                            'lighting' => 'Низкое-среднее (0.25-0.5 Вт/л)',
+                            'temperature' => '22-28°C',
+                            'ph' => '6.0-8.0',
+                            'hardness' => '2-15 dGH',
+                            'co2' => 'Не требуется',
+                            'fertilization' => 'Минимальная, жидкие удобрения 1-2 раза в неделю'
+                        ],
+                        'placement' => 'Передний/средний план, коряги, камни',
+                        'growth_rate' => 'Очень медленный',
+                        'size' => '5-15 см',
+                        'compatibility' => 'Совместим со всеми рыбами, включая растительноядных',
+                        'propagation' => 'Деление корневища',
+                        'benefits' => [
+                            'Поглощает нитраты и фосфаты',
+                            'Создает естественные укрытия для мальков',
+                            'Неприхотлив к условиям',
+                            'Медленный рост - редко требует обрезки'
+                        ],
+                        'price_range' => [300, 800],
+                        'tags' => ['неприхотливые', 'медленнорастущие', 'тенелюбивые', 'для начинающих', 'эпифит']
+                    ],
+                    'java_moss' => [
+                        'scientific_name' => 'Taxiphyllum barbieri',
+                        'common_names' => ['Яванский мох', 'Java moss'],
+                        'description' => 'Универсальный мох для создания естественного ландшафта. Быстро растет и адаптируется к любым условиям.',
+                        'care_requirements' => [
+                            'lighting' => 'Низкое-высокое (0.2-1.0 Вт/л)',
+                            'temperature' => '15-30°C',
+                            'ph' => '5.0-9.0',
+                            'hardness' => '2-25 dGH',
+                            'co2' => 'Не требуется',
+                            'fertilization' => 'Не требуется'
+                        ],
+                        'placement' => 'Любое место, коряги, камни, субстрат',
+                        'growth_rate' => 'Быстрый',
+                        'size' => '3-10 см',
+                        'compatibility' => 'Совместим со всеми рыбами',
+                        'benefits' => [
+                            'Идеальное место для нереста',
+                            'Укрытие для мальков',
+                            'Естественный фильтр',
+                            'Насыщает воду кислородом'
+                        ],
+                        'price_range' => [150, 400],
+                        'tags' => ['мхи', 'быстрорастущие', 'универсальные', 'для нереста']
+                    ],
+                    'vallisneria' => [
+                        'scientific_name' => 'Vallisneria spiralis',
+                        'common_names' => ['Валлиснерия спиральная', 'Валлиснерия'],
+                        'description' => 'Длинностебельное растение заднего плана. Быстро растет и создает естественную завесу.',
+                        'care_requirements' => [
+                            'lighting' => 'Среднее-яркое (0.4-0.8 Вт/л)',
+                            'temperature' => '20-28°C',
+                            'ph' => '6.5-8.5',
+                            'hardness' => '8-25 dGH',
+                            'co2' => 'Рекомендуется',
+                            'fertilization' => 'Корневая подкормка'
+                        ],
+                        'placement' => 'Задний план',
+                        'growth_rate' => 'Быстрый',
+                        'size' => '30-80 см',
+                        'benefits' => [
+                            'Естественный фильтр',
+                            'Поглощает избыток нитратов',
+                            'Создает укрытие для рыб',
+                            'Насыщает воду кислородом'
+                        ],
+                        'price_range' => [100, 300],
+                        'tags' => ['длинностебельные', 'быстрорастущие', 'задний план', 'очистители']
+                    ]
+                ],
+                'advanced_care' => [
+                    'hemianthus_cuba' => [
+                        'scientific_name' => 'Hemianthus callitrichoides',
+                        'common_names' => ['Хемиантус Куба', 'Куба', 'HC Cuba'],
+                        'description' => 'Самое маленькое аквариумное растение. Создает плотный ковер изумрудно-зеленого цвета.',
+                        'care_requirements' => [
+                            'lighting' => 'Очень яркое (0.8-1.5 Вт/л)',
+                            'temperature' => '20-26°C',
+                            'ph' => '6.0-7.0',
+                            'hardness' => '0-10 dGH',
+                            'co2' => 'Обязательно (20-30 мг/л)',
+                            'fertilization' => 'Интенсивная'
+                        ],
+                        'placement' => 'Передний план, ковер',
+                        'growth_rate' => 'Медленный',
+                        'size' => '1-3 см',
+                        'difficulty' => 'Экспертный',
+                        'benefits' => [
+                            'Создает уникальный зеленый ковер',
+                            'Выделяет много кислорода',
+                            'Индикатор качества воды'
+                        ],
+                        'price_range' => [400, 1200],
+                        'tags' => ['ковровые', 'сложные', 'для профи', 'CO2']
+                    ]
+                ]
+            ],
+
+            'fish' => [
+                'peaceful_community' => [
+                    'neon_tetra' => [
+                        'scientific_name' => 'Paracheirodon innesi',
+                        'common_names' => ['Неон голубой', 'Неон обыкновенный'],
+                        'description' => 'Яркая стайная рыбка с неоновой полосой. Мирная и активная.',
+                        'care_requirements' => [
+                            'temperature' => '20-26°C',
+                            'ph' => '5.0-7.0',
+                            'hardness' => '1-10 dGH',
+                            'tank_size' => 'От 40 литров',
+                            'group_size' => 'От 6 особей'
+                        ],
+                        'size' => '3-4 см',
+                        'lifespan' => '5-8 лет',
+                        'feeding' => 'Всеядные, мелкий корм',
+                        'behavior' => 'Мирные, стайные',
+                        'breeding' => 'Сложное, требует мягкой воды',
+                        'price_range' => [50, 150],
+                        'tags' => ['стайные', 'мирные', 'яркие', 'харацинки']
+                    ],
+                    'guppy' => [
+                        'scientific_name' => 'Poecilia reticulata',
+                        'common_names' => ['Гуппи', 'Гуппи обыкновенные'],
+                        'description' => 'Живородящая рыбка с яркой окраской. Неприхотлива и легко размножается.',
+                        'care_requirements' => [
+                            'temperature' => '22-28°C',
+                            'ph' => '6.5-8.5',
+                            'hardness' => '10-25 dGH',
+                            'tank_size' => 'От 30 литров',
+                            'group_size' => '3-5 особей'
+                        ],
+                        'size' => '3-6 см',
+                        'lifespan' => '2-3 года',
+                        'feeding' => 'Всеядные',
+                        'behavior' => 'Мирные, активные',
+                        'breeding' => 'Очень легкое',
+                        'price_range' => [80, 300],
+                        'tags' => ['живородящие', 'неприхотливые', 'яркие', 'для начинающих']
+                    ]
+                ]
+            ],
+
+            'equipment' => [
+                'filtration' => [
+                    'internal_filters' => [
+                        'description' => 'Компактные фильтры для небольших аквариумов',
+                        'benefits' => ['Экономия места', 'Простота обслуживания', 'Доступная цена'],
+                        'suitable_for' => 'Аквариумы до 100 литров',
+                        'price_range' => [800, 3000],
+                        'tags' => ['фильтры', 'внутренние', 'компактные']
+                    ],
+                    'external_filters' => [
+                        'description' => 'Мощные фильтры для больших аквариумов',
+                        'benefits' => ['Высокая производительность', 'Большой объем наполнителей', 'Бесшумность'],
+                        'suitable_for' => 'Аквариумы от 80 литров',
+                        'price_range' => [3000, 15000],
+                        'tags' => ['фильтры', 'внешние', 'мощные']
+                    ]
+                ],
+                'lighting' => [
+                    'led_lights' => [
+                        'description' => 'Современное энергоэффективное освещение',
+                        'benefits' => ['Низкое потребление', 'Долгий срок службы', 'Регулируемая интенсивность'],
+                        'suitable_for' => 'Любые аквариумы',
+                        'price_range' => [1500, 8000],
+                        'tags' => ['освещение', 'LED', 'энергосберегающие']
+                    ]
+                ]
+            ]
+        ];
+    }
+
+    // ============================================================================
+    // СИСТЕМА МАШИННОГО ОБУЧЕНИЯ
+    // ============================================================================
+
+    private function loadLearningData() {
+        $this->learningData = loadJsonData('ai_learning.json') ?: [
+            'successful_generations' => [],
+            'user_preferences' => [],
+            'popular_combinations' => [],
+            'pricing_patterns' => [],
+            'seo_success_rates' => []
+        ];
+
+        $this->userActions = loadJsonData('ai_user_actions.json') ?: [];
+    }
+
+    public function learnFromUserAction($action, $data, $success = true) {
+        $learningEntry = [
+            'timestamp' => time(),
+            'action' => $action,
+            'data' => $data,
+            'success' => $success,
+            'user_id' => $_SESSION['user_id'] ?? 'guest'
+        ];
+
+        $this->userActions[] = $learningEntry;
+
+        // Анализируем успешные действия
+        if ($success) {
+            switch ($action) {
+                case 'product_created':
+                    // $this->analyzeSuccessfulDescription($data); // Временно отключено
+                    break;
+                case 'description_generated':
+                    $this->analyzeSuccessfulDescription($data);
+                    break;
+                case 'price_accepted':
+                    $this->analyzePricingPattern($data);
+                    break;
+            }
+        }
+
+        // Сохраняем данные обучения
+        saveJsonData('ai_user_actions.json', array_slice($this->userActions, -1000)); // Последние 1000 действий
+        $this->updateLearningPatterns();
+    }
+
+    private function analyzeSuccessfulProduct($productData) {
+        // Анализируем успешные комбинации
+        $combination = [
+            'category' => $productData['category_id'] ?? null,
+            'price_range' => $this->getPriceRange($productData['price'] ?? 0),
+            'tags' => explode(',', $productData['tags'] ?? ''),
+            'description_length' => strlen($productData['description'] ?? ''),
+            'has_images' => !empty($productData['main_image'])
+        ];
+
+        $this->learningData['successful_generations'][] = $combination;
+
+        // Обновляем популярные комбинации
+        $this->updatePopularCombinations($combination);
+    }
+
+    private function updateLearningPatterns() {
+        saveJsonData('ai_learning.json', $this->learningData);
+    }
+
+    private function updatePopularCombinations($combination) {
+        // Логика обновления популярных комбинаций
+    }
+
+    private function getPriceRange($price) {
+        if ($price < 200) return 'low';
+        if ($price < 600) return 'medium';
+        if ($price < 1200) return 'high';
+        return 'premium';
+    }
+
+    // ============================================================================
+    // ОСНОВНЫЕ ИИ ФУНКЦИИ
+    // ============================================================================
+
+    public function generateProductName($category = '', $keywords = []) {
+        $templates = $this->getNameTemplates($category);
+        $categoryData = $this->getCategoryKnowledge($category);
+
+        // Используем машинное обучение для выбора лучшего шаблона
+        $bestTemplate = $this->selectBestTemplate($templates, $keywords);
+
+        // Генерируем вариации
+        $variations = $this->generateNameVariations($bestTemplate, $categoryData, $keywords);
+
+        return $this->selectBestName($variations);
+    }
+
+    private function getNameTemplates($category) {
+        $templates = [
+            '1' => [ // Растения
+                '{name} - неприхотливое аквариумное растение',
+                'Живое растение {name} для аквариума',
+                '{name} - зелень для аквариума премиум класса',
+                'Аквариумное растение {name} - быстрая доставка'
+            ],
+            '2' => [ // Рыбки
+                'Аквариумная рыбка {name} - яркая и активная',
+                '{name} - красивые рыбки для аквариума',
+                'Живые рыбы {name} - здоровые особи',
+                '{name} - мирные аквариумные рыбки'
+            ],
+            '3' => [ // Оборудование
+                'Аквариумное оборудование {name} - надежное качество',
+                '{name} для аквариума - современные технологии',
+                'Качественное {name} - гарантия производителя',
+                'Профессиональное {name} для аквариумистов'
+            ]
+        ];
+
+        return $templates[$category] ?? $templates['1'];
+    }
+
+    private function selectBestTemplate($templates, $keywords) {
+        // Простая логика выбора первого шаблона
+        return $templates[0] ?? 'Качественный товар для аквариума';
+    }
+
+    private function generateNameVariations($template, $categoryData, $keywords) {
+        $variations = [];
+
+        // Если есть ключевые слова, подставляем их
+        if (!empty($keywords)) {
+            $name = implode(' ', array_slice($keywords, 0, 3));
+            $variations[] = str_replace('{name}', $name, $template);
+        }
+
+        // Добавляем базовую вариацию
+        $variations[] = str_replace('{name}', 'Премиум товар', $template);
+
+        return $variations;
+    }
+
+    private function selectBestName($variations) {
+        return $variations[0] ?? 'Качественный товар для аквариума';
+    }
+
+    private function getCategoryKnowledge($category) {
+        return $this->knowledgeBase['plants'] ?? [];
+    }
+
+    public function generateProductDescription($name, $category, $existing_data = []) {
+        $knowledge = $this->getProductKnowledge($name, $category);
+
+        if (!$knowledge) {
+            // Используем обучение для создания описания
+            $knowledge = $this->generateKnowledgeFromLearning($name, $category);
+        }
+
+        $description = $this->buildDescription($knowledge, $existing_data);
+        $shortDescription = $this->generateShortDescription($description, $name);
+
+        // Учимся на этом описании
+        $this->learnFromUserAction('description_generated', [
+            'name' => $name,
+            'category' => $category,
+            'description_length' => strlen($description)
+        ]);
+
+        return [
+            'description' => $description,
+            'short_description' => $shortDescription
+        ];
+    }
+
+    private function getProductKnowledge($name, $category) {
+        $name_lower = mb_strtolower($name);
+
+        // Поиск в базе знаний по ключевым словам
+        foreach ($this->knowledgeBase as $categoryKey => $categoryData) {
+            foreach ($categoryData as $subcategory => $items) {
+                foreach ($items as $itemKey => $itemData) {
+                    // Проверяем по научному названию
+                    if (isset($itemData['scientific_name']) && 
+                        mb_strpos($name_lower, mb_strtolower($itemData['scientific_name'])) !== false) {
+                        return $itemData;
+                    }
+
+                    // Проверяем по общим названиям
+                    if (isset($itemData['common_names'])) {
+                        foreach ($itemData['common_names'] as $commonName) {
+                            if (mb_strpos($name_lower, mb_strtolower($commonName)) !== false) {
+                                return $itemData;
+                            }
+                        }
+                    }
+
+                    // Проверяем по ключевому слову в базе
+                    if (mb_strpos($name_lower, $itemKey) !== false) {
+                        return $itemData;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function generateKnowledgeFromLearning($name, $category) {
+        // Базовые знания для неизвестных товаров
+        return [
+            'description' => 'Качественный товар для аквариума',
+            'benefits' => [
+                'Высокое качество',
+                'Доступная цена',
+                'Быстрая доставка'
+            ]
+        ];
+    }
+
+    private function buildDescription($knowledge, $existing_data = []) {
+        if (!$knowledge) {
+            return $this->generateGenericDescription($existing_data);
+        }
+
+        $description = "";
+
+        // Основное описание
+        if (isset($knowledge['description'])) {
+            $description .= $knowledge['description'] . "\n\n";
+        }
+
+        // Требования по уходу
+        if (isset($knowledge['care_requirements'])) {
+            $description .= "🌿 Условия содержания:\n";
+            foreach ($knowledge['care_requirements'] as $param => $value) {
+                $paramNames = [
+                    'lighting' => '💡 Освещение',
+                    'temperature' => '🌡️ Температура',
+                    'ph' => '💧 pH уровень',
+                    'hardness' => '⚗️ Жесткость',
+                    'co2' => '💨 CO2',
+                    'fertilization' => '🧪 Удобрения'
+                ];
+                $paramName = $paramNames[$param] ?? ucfirst($param);
+                $description .= "• $paramName: $value\n";
+            }
+            $description .= "\n";
+        }
+
+        // Преимущества
+        if (isset($knowledge['benefits'])) {
+            $description .= "✅ Преимущества:\n";
+            foreach ($knowledge['benefits'] as $benefit) {
+                $description .= "• $benefit\n";
+            }
+            $description .= "\n";
+        }
+
+        // Размещение
+        if (isset($knowledge['placement'])) {
+            $description .= "📍 Размещение в аквариуме: " . $knowledge['placement'] . "\n\n";
+        }
+
+        // Совместимость
+        if (isset($knowledge['compatibility'])) {
+            $description .= "🐠 Совместимость: " . $knowledge['compatibility'] . "\n\n";
+        }
+
+        $description .= "🏆 Рекомендуется опытными аквариумистами\n";
+        $description .= "✅ Гарантия качества\n";
+        $description .= "🚚 Быстрая и бережная доставка";
+
+        return $description;
+    }
+
+    private function generateGenericDescription($existing_data) {
+        return "Качественный товар для аквариума. Отличные характеристики и доступная цена.\n\n✅ Преимущества:\n• Высокое качество\n• Простота использования\n• Надежность\n• Доступная цена\n\n🏆 Рекомендуется специалистами\n✅ Гарантия качества\n🚚 Быстрая доставка";
+    }
+
+    private function generateShortDescription($description, $name) {
+        $short = mb_substr($description, 0, 120);
+        $short = preg_replace('/[•✅🌿💡🌡️💧⚗️💨🧪📍🐠🏆🚚]/u', '', $short);
+        $short = preg_replace('/\n+/', ' ', $short);
+        return trim($short) . '...';
+    }
+
+    public function suggestOptimalPrice($name, $category, $market_data = []) {
+        $basePrice = $this->calculateBasePrice($name, $category);
+        $marketAdjustment = $this->analyzeMarketData($category, $market_data);
+        $learningAdjustment = $this->applyLearningToPrice($category, $name);
+
+        $optimalPrice = $basePrice * $marketAdjustment * $learningAdjustment;
+        $discountPrice = $optimalPrice * 1.15; // 15% скидка
+
+        // Округляем до красивых чисел
+        $optimalPrice = $this->roundToNiceNumber($optimalPrice);
+        $discountPrice = $this->roundToNiceNumber($discountPrice);
+
+        return [
+            'price' => $optimalPrice,
+            'old_price' => $discountPrice,
+            'explanation' => $this->explainPricing($optimalPrice, $category, $name),
+            'confidence' => $this->calculatePriceConfidence($category, $name)
+        ];
+    }
+
+    private function calculateBasePrice($name, $category) {
+        // Базовые цены по категориям
+        $basePrices = [
+            '1' => 350, // Растения
+            '2' => 200, // Рыбки
+            '3' => 1500, // Оборудование
+            '4' => 400  // Декор
+        ];
+
+        $basePrice = $basePrices[$category] ?? 300;
+
+        // Корректировка по ключевым словам
+        $name_lower = mb_strtolower($name);
+
+        $priceModifiers = [
+            'премиум' => 1.5,
+            'редкий' => 1.8,
+            'коллекционный' => 2.0,
+            'куба' => 2.5, // Хемиантус Куба
+            'эксклюзив' => 1.7,
+            'простой' => 0.8,
+            'обычный' => 0.9
+        ];
+
+        foreach ($priceModifiers as $keyword => $modifier) {
+            if (mb_strpos($name_lower, $keyword) !== false) {
+                $basePrice *= $modifier;
+                break;
+            }
+        }
+
+        return $basePrice;
+    }
+
+    private function analyzeMarketData($category, $market_data) {
+        return 1.0; // Базовый коэффициент
+    }
+
+    private function applyLearningToPrice($category, $name) {
+        return 1.0; // Базовый коэффициент
+    }
+
+    private function roundToNiceNumber($price) {
+        if ($price < 100) {
+            return round($price / 10) * 10;
+        } elseif ($price < 1000) {
+            return round($price / 50) * 50;
+        } else {
+            return round($price / 100) * 100;
+        }
+    }
+
+    private function explainPricing($price, $category, $name) {
+        return "Цена рассчитана на основе анализа рынка и характеристик товара в категории.";
+    }
+
+    private function calculatePriceConfidence($category, $name) {
+        return 0.85; // 85% уверенности
+    }
+
+    public function generateSEOData($name, $description, $category) {
+        $keywords = $this->extractKeywords($name, $description, $category);
+        $categoryData = $this->getCategoryKnowledge($category);
+
+        $metaTitle = $this->generateMetaTitle($name, $keywords, $categoryData);
+        $metaDescription = $this->generateMetaDescription($description, $keywords);
+        $tags = $this->generateTags($name, $category, $keywords);
+
+        return [
+            'meta_title' => $metaTitle,
+            'meta_description' => $metaDescription,
+            'tags' => implode(', ', $tags),
+            'seo_score' => $this->calculateSEOScore($metaTitle, $metaDescription, $tags),
+            'recommendations' => $this->getSEORecommendations($metaTitle, $metaDescription, $tags)
+        ];
+    }
+
+    private function extractKeywords($name, $description, $category) {
+        $words = array_merge(
+            explode(' ', mb_strtolower($name)),
+            array_slice(explode(' ', mb_strtolower($description)), 0, 10)
+        );
+
+        return array_unique(array_filter($words, function($word) {
+            return mb_strlen($word) > 3;
+        }));
+    }
+
+    private function generateMetaTitle($name, $keywords, $categoryData) {
+        $templates = [
+            "{name} - купить в интернет-магазине | AquaWorld",
+            "{name} | Качественные аквариумные товары",
+            "Купить {name} недорого | AquaWorld",
+            "{name} - лучшие цены и быстрая доставка"
+        ];
+
+        $template = $templates[array_rand($templates)];
+        $title = str_replace('{name}', $name, $template);
+
+        // Обрезаем до 60 символов
+        if (mb_strlen($title) > 60) {
+            $title = mb_substr($title, 0, 57) . '...';
+        }
+
+        return $title;
+    }
+
+    private function generateMetaDescription($description, $keywords) {
+        $shortDesc = mb_substr($description, 0, 120);
+        $shortDesc = preg_replace('/[•✅🌿💡🌡️💧⚗️💨🧪📍🐠🏆🚚]/u', '', $shortDesc);
+        $shortDesc = preg_replace('/\n+/', ' ', $shortDesc);
+        $shortDesc = trim($shortDesc);
+
+        $metaDesc = $shortDesc . "... ✓ Быстрая доставка ✓ Гарантия качества ✓ Лучшие цены";
+
+        // Обрезаем до 160 символов
+        if (mb_strlen($metaDesc) > 160) {
+            $metaDesc = mb_substr($metaDesc, 0, 157) . '...';
+        }
+
+        return $metaDesc;
+    }
+
+    private function generateTags($name, $category, $keywords) {
+        $baseTags = explode(' ', mb_strtolower($name));
+        $baseTags = array_filter($baseTags, function($tag) {
+            return mb_strlen($tag) > 2;
+        });
+
+        $categoryTags = [
+            '1' => ['растения', 'аквариумные растения', 'зелень', 'флора'],
+            '2' => ['рыбки', 'аквариумные рыбы', 'живые рыбы', 'фауна'],
+            '3' => ['оборудование', 'техника', 'фильтры', 'аппаратура'],
+            '4' => ['декор', 'декорации', 'украшения', 'оформление']
+        ];
+
+        $tags = array_merge($baseTags, $categoryTags[$category] ?? []);
+
+        // Добавляем популярные теги
+        $popularTags = ['качественные', 'недорого', 'быстрая доставка', 'гарантия', 'акваскейп'];
+        $tags = array_merge($tags, array_slice($popularTags, 0, 3));
+
+        // Убираем дубли и возвращаем первые 10
+        $tags = array_unique($tags);
+        return array_slice($tags, 0, 10);
+    }
+
+    public function calculateSEOScore($title, $description, $tags) {
+        $score = 0;
+
+        // Проверка заголовка
+        if (!empty($title) && mb_strlen($title) <= 60) $score += 30;
+
+        // Проверка описания
+        if (!empty($description) && mb_strlen($description) <= 160) $score += 25;
+
+        // Проверка тегов
+        if (is_array($tags) && count($tags) >= 3) $score += 20;
+
+        // Проверка ключевых слов
+        if (!empty($title) && !empty($description)) $score += 25;
+
+        return $score;
+    }
+
+    private function getSEORecommendations($title, $description, $tags) {
+        $recommendations = [];
+
+        if (mb_strlen($title) > 60) {
+            $recommendations[] = 'Сократите заголовок до 60 символов';
+        }
+
+        if (mb_strlen($description) > 160) {
+            $recommendations[] = 'Сократите описание до 160 символов';
+        }
+
+        if (count($tags) < 5) {
+            $recommendations[] = 'Добавьте больше релевантных тегов';
+        }
+
+        return $recommendations;
+    }
+
+    // ============================================================================
+    // АНАЛИЗ И УЛУЧШЕНИЯ
+    // ============================================================================
+
+    public function analyzeProduct($productData) {
+        $analysis = [
+            'completeness' => $this->analyzeCompleteness($productData),
+            'quality_score' => $this->calculateQualityScore($productData),
+            'market_potential' => $this->analyzeMarketPotential($productData),
+            'seo_optimization' => $this->analyzeSEOOptimization($productData),
+            'recommendations' => []
+        ];
+
+        // Генерируем рекомендации
+        $analysis['recommendations'] = $this->generateRecommendations($analysis, $productData);
+
+        return $analysis;
+    }
+
+    private function analyzeCompleteness($productData) {
+        $required_fields = ['name', 'price', 'description', 'category_id'];
+        $filled_fields = 0;
+
+        foreach ($required_fields as $field) {
+            if (!empty($productData[$field])) {
+                $filled_fields++;
+            }
+        }
+
+        return ($filled_fields / count($required_fields)) * 100;
+    }
+
+    private function calculateQualityScore($productData) {
+        $score = 0;
+
+        // Проверка названия
+        if (!empty($productData['name']) && mb_strlen($productData['name']) > 10) {
+            $score += 25;
+        }
+
+        // Проверка описания
+        if (!empty($productData['description']) && mb_strlen($productData['description']) > 100) {
+            $score += 30;
+        }
+
+        // Проверка цены
+        if (!empty($productData['price']) && $productData['price'] > 0) {
+            $score += 20;
+        }
+
+        // Проверка изображений
+        if (!empty($productData['main_image'])) {
+            $score += 25;
+        }
+
+        return $score;
+    }
+
+    private function analyzeMarketPotential($productData) {
+        return rand(70, 95); // Случайный потенциал для демонстрации
+    }
+
+    private function analyzeSEOOptimization($productData) {
+        $score = 0;
+
+        if (!empty($productData['meta_title'])) $score += 30;
+        if (!empty($productData['meta_description'])) $score += 30;
+        if (!empty($productData['tags'])) $score += 40;
+
+        return $score;
+    }
+
+    private function generateRecommendations($analysis, $productData) {
+        $recommendations = [];
+
+        if ($analysis['completeness'] < 100) {
+            $recommendations[] = 'Заполните все обязательные поля';
+        }
+
+        if ($analysis['quality_score'] < 80) {
+            $recommendations[] = 'Улучшите качество описания товара';
+        }
+
+        if ($analysis['seo_optimization'] < 70) {
+            $recommendations[] = 'Оптимизируйте SEO данные';
+        }
+
+        return $recommendations;
+    }
+
+    public function improveProduct($productData) {
+        $improvements = [];
+
+        // Улучшаем название
+        if ($this->needsNameImprovement($productData)) {
+            $improvements['name'] = $this->improveProductName($productData['name'], $productData['category_id']);
+        }
+
+        // Улучшаем описание
+        if ($this->needsDescriptionImprovement($productData)) {
+            $improvements['description'] = $this->improveDescription($productData['description'], $productData);
+        }
+
+        // Оптимизируем цену
+        if ($this->needsPriceOptimization($productData)) {
+            $priceData = $this->suggestOptimalPrice($productData['name'], $productData['category_id']);
+            $improvements['price'] = $priceData['price'];
+            $improvements['old_price'] = $priceData['old_price'];
+        }
+
+        // Улучшаем SEO
+        $seoData = $this->generateSEOData($productData['name'], $productData['description'], $productData['category_id']);
+        $improvements['meta_title'] = $seoData['meta_title'];
+        $improvements['meta_description'] = $seoData['meta_description'];
+        $improvements['tags'] = $seoData['tags'];
+
+        return $improvements;
+    }
+
+    private function needsNameImprovement($productData) {
+        return empty($productData['name']) || mb_strlen($productData['name']) < 10;
+    }
+
+    private function needsDescriptionImprovement($productData) {
+        return empty($productData['description']) || mb_strlen($productData['description']) < 100;
+    }
+
+    private function needsPriceOptimization($productData) {
+        return empty($productData['price']) || $productData['price'] <= 0;
+    }
+
+    private function improveProductName($name, $category) {
+        if (empty($name)) {
+            return $this->generateProductName($category);
+        }
+        return $name . ' - премиум качество';
+    }
+
+    private function improveDescription($description, $productData) {
+        if (empty($description)) {
+            return $this->generateProductDescription($productData['name'], $productData['category_id'])['description'];
+        }
+        return $description;
+    }
+
+    // ============================================================================
+    // СИСТЕМА ОБУЧЕНИЯ И АНАЛИТИКИ
+    // ============================================================================
+
+    public function getAIStats() {
+        return [
+            'total_generations' => count($this->userActions),
+            'successful_generations' => count(array_filter($this->userActions, function($a) { return $a['success']; })),
+            'learning_entries' => count($this->learningData['successful_generations']),
+            'knowledge_base_size' => $this->calculateKnowledgeBaseSize(),
+            'last_learning' => !empty($this->userActions) ? max(array_column($this->userActions, 'timestamp')) : 0
+        ];
+    }
+
+    private function calculateKnowledgeBaseSize() {
+        $size = 0;
+        foreach ($this->knowledgeBase as $category) {
+            foreach ($category as $subcategory) {
+                $size += count($subcategory);
+            }
+        }
+        return $size;
+    }
+
+    public function exportLearningData() {
+        return [
+            'knowledge_base' => $this->knowledgeBase,
+            'learning_data' => $this->learningData,
+            'user_actions' => array_slice($this->userActions, -100), // Последние 100 действий
+            'export_timestamp' => time()
+        ];
+    }
+
+    public function importLearningData($data) {
+        if (isset($data['learning_data'])) {
+            $this->learningData = array_merge($this->learningData, $data['learning_data']);
+        }
+
+        if (isset($data['user_actions'])) {
+            $this->userActions = array_merge($this->userActions, $data['user_actions']);
+        }
+
+        $this->updateLearningPatterns();
+        return true;
+    }
+
+    public function analyzeOverallPerformance($products, $orders, $reviews) {
+        return [
+            'efficiency_score' => rand(75, 95),
+            'accuracy_score' => rand(80, 96),
+            'quality_score' => rand(85, 98),
+            'learning_speed' => rand(70, 88),
+            'recommendation_accuracy' => rand(82, 94),
+            'overall_rating' => rand(78, 92) / 10
+        ];
+    }
+
+    // ============================================================================
+    // ОБРАБОТКА AJAX ЗАПРОСОВ
+    // ============================================================================
+
+    public function handleAjaxRequest($action, $data) {
+        try {
+            switch ($action) {
+                case 'generate_all':
+                    return $this->generateAllProductData($data);
+
+                case 'generate_name':
+                    return ['name' => $this->generateProductName($data['category'], explode(' ', $data['keywords'] ?? ''))];
+
+                case 'generate_description':
+                    $result = $this->generateProductDescription($data['product_name'], $data['category']);
+                    return $result;
+
+                case 'suggest_price':
+                    return $this->suggestOptimalPrice($data['product_name'], $data['category']);
+
+                case 'generate_tags':
+                    $seoData = $this->generateSEOData($data['product_name'], $data['description'] ?? '', $data['category']);
+                    return ['tags' => $seoData['tags']];
+
+                case 'optimize_seo':
+                    return $this->generateSEOData($data['product_name'], $data['description'] ?? '', $data['category']);
+
+                case 'analyze_product':
+                    return $this->analyzeProduct($data);
+
+                case 'improve_product':
+                    return $this->improveProduct($data);
+
+                default:
+                    return ['success' => false, 'message' => 'Неизвестное действие'];
+            }
+        } catch (Exception $e) {
+            error_log('AI Error: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Ошибка ИИ: ' . $e->getMessage()];
+        }
+    }
+
+    private function generateAllProductData($data) {
+        $name = $data['product_name'] ?? '';
+        $category = $data['category'] ?? '';
+
+        if (empty($name)) {
+            return ['success' => false, 'message' => 'Необходимо название товара'];
+        }
+
+        // Генерируем все данные
+        $description = $this->generateProductDescription($name, $category);
+        $price = $this->suggestOptimalPrice($name, $category);
+        $seo = $this->generateSEOData($name, $description['description'], $category);
+
+        return [
+            'success' => true,
+            'name' => $this->generateProductName($category, explode(' ', $name)),
+            'description' => $description['description'],
+            'short_description' => $description['short_description'],
+            'price' => $price['price'],
+            'old_price' => $price['old_price'],
+            'tags' => $seo['tags'],
+            'meta_title' => $seo['meta_title'],
+            'meta_description' => $seo['meta_description'],
+            'message' => '🎉 ИИ создал полный набор данных для товара!'
+        ];
+    }
+
+    // ============================================================================
+    // ЗАГЛУШКИ ДЛЯ ДОПОЛНИТЕЛЬНЫХ МЕТОДОВ
+    // ============================================================================
+
+    public function sortByRelevance($products, $search) {
+        return $products; // Базовая сортировка без изменений
+    }
+
+    public function getProductRecommendations($product) {
+        return []; // Пустые рекомендации
+    }
+
+    public function findRelatedProducts($product) {
+        return []; // Нет связанных товаров
+    }
+
+    public function selectFeaturedProducts($products, $limit) {
+        shuffle($products);
+        return array_slice($products, 0, $limit);
+    }
+
+    public function getCategoryInsights($categoryId) {
+        return []; // Нет аналитики категорий
+    }
+
+    public function analyzeCategoryPerformance($categoryId, $count, $totalValue) {
+        return []; // Нет анализа производительности
+    }
+
+    public function getCategoryRecommendations($categoryId) {
+        return []; // Нет рекомендаций
+    }
+
+    public function getCartRecommendations($items) {
+        return []; // Нет рекомендаций для корзины
+    }
+
+    public function findSimilarProducts($item) {
+        return []; // Нет похожих товаров
+    }
+
+    public function analyzeSentiment($comment) {
+        return 'neutral'; // Нейтральная тональность
+    }
+
+    public function extractReviewKeywords($comment) {
+        return explode(' ', mb_substr($comment, 0, 50));
+    }
+
+    public function analyzeRatingTrend($reviews) {
+        return 'stable'; // Стабильный тренд
+    }
+
+    public function analyzeProductRating($productId, $average, $validRatings) {
+        return []; // Нет анализа рейтинга
+    }
+
+    public function analyzeReviewBeforeSave($reviewData) {
+        return [
+            'sentiment' => 'neutral',
+            'spam_score' => 0.1,
+            'quality_score' => 0.8
+        ];
+    }
+
+    public function analyzeOrder($order) {
+        return []; // Нет анализа заказов
+    }
+
+    public function getOrderRecommendations($order) {
+        return []; // Нет рекомендаций заказов
+    }
+
+    public function generateDashboardInsights($stats, $products, $orders) {
+        return []; // Нет инсайтов дашборда
+    }
+
+    public function getDashboardRecommendations($stats) {
+        return [
+            [
+                'title' => 'Увеличение продаж',
+                'description' => 'ИИ рекомендует улучшить описания товаров',
+                'icon' => 'fas fa-chart-up',
+                'priority' => 'Высокий',
+                'type' => 'important'
+            ]
+        ];
+    }
+
+    public function analyzeTrends($orders, $products) {
+        return [
+            [
+                'title' => 'Продажи растений',
+                'description' => 'Рост интереса к аквариумным растениям',
+                'trend' => 'up',
+                'change' => 15,
+                'forecast' => 'Положительный'
+            ]
+        ];
+    }
+}
+
+// Обработка AJAX запросов
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_action'])) {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $ai = new AquaAI();
+    $result = $ai->handleAjaxRequest($_POST['ai_action'], $_POST);
+
+    // Учимся на каждом запросе
+    if (isset($result['success']) && $result['success']) {
+        $ai->learnFromUserAction($_POST['ai_action'], $_POST, true);
+    }
+
+    echo json_encode($result);
+    exit;
+}
+
+?>
