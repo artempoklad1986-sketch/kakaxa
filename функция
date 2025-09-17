@@ -1,43 +1,33 @@
 <?php
 // ============================================================================
-// 🚀 FUNCTIONS.PHP v3.0 - МЕГА ВЕРСИЯ С ИИ ИНТЕГРАЦИЕЙ (ИСПРАВЛЕНО)
-// Полная интеграция ИИ модуля в систему
+// 🚀 FUNCTIONS.PHP v3.2 - ПОЛНАЯ ВЕРСИЯ С ВСЕМИ ФУНКЦИЯМИ
+// Исправлены все недостающие функции
 // ============================================================================
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Подключаем ИИ модуль с проверкой существования файла
+// ИСПРАВЛЕНО: правильный путь к ИИ модулю
 $aiModulePath = $_SERVER['DOCUMENT_ROOT'] . '/admin/modules/ai_assistant/aqua_ai.php';
-if (!file_exists($aiModulePath)) {
-    // Если файл не существует, создаем заглушку ИИ
-    class AquaAI {
-        public function __construct() {}
 
+if (!file_exists($aiModulePath)) {
+    // Полная заглушка ИИ если модуль не найден
+    class AquaAI {
         public function handleAjaxRequest($action, $data) {
             return ['success' => false, 'message' => 'ИИ модуль не найден'];
         }
-
         public function generateProductName($category, $keywords = []) {
             return 'Автосгенерированное название товара';
         }
-
         public function generateProductDescription($name, $category, $existing_data = []) {
             return [
                 'description' => 'Качественный товар для аквариума. Отличные характеристики и доступная цена.',
                 'short_description' => 'Качественный товар для аквариума'
             ];
         }
-
         public function suggestOptimalPrice($name, $category, $market_data = []) {
-            return [
-                'price' => 500,
-                'old_price' => 700,
-                'explanation' => 'Базовая цена по категории',
-                'confidence' => 0.5
-            ];
+            return ['price' => 500, 'old_price' => 700, 'explanation' => 'Базовая цена', 'confidence' => 0.5];
         }
-
         public function generateSEOData($name, $description, $category) {
             return [
                 'meta_title' => $name . ' - купить в интернет-магазине',
@@ -47,43 +37,64 @@ if (!file_exists($aiModulePath)) {
                 'recommendations' => []
             ];
         }
-
         public function analyzeProduct($productData) {
-            return [
-                'completeness' => 80,
-                'quality_score' => 75,
-                'market_potential' => 85,
-                'seo_optimization' => 70,
-                'recommendations' => []
-            ];
+            return ['completeness' => 80, 'quality_score' => 75, 'seo_optimization' => 70, 'recommendations' => []];
         }
-
-        public function improveProduct($productData) {
-            return [];
-        }
-
-        public function learnFromUserAction($action, $data, $success = true) {
-            return true;
-        }
-
+        public function improveProduct($productData) { return []; }
+        public function learnFromUserAction($action, $data, $success = true) { return true; }
         public function getAIStats() {
             return [
-                'total_generations' => 0,
+                'total_generations' => 0, 
                 'successful_generations' => 0,
-                'learning_entries' => 0,
+                'learning_entries' => 0, 
                 'knowledge_base_size' => 126,
                 'last_learning' => 0
             ];
         }
-
-        public function exportLearningData() {
-            return ['message' => 'ИИ модуль не активен'];
+        // Все остальные методы-заглушки
+        public function sortByRelevance($products, $search) { return $products; }
+        public function getProductRecommendations($product) { return []; }
+        public function findRelatedProducts($product) { return []; }
+        public function selectFeaturedProducts($products, $limit) { 
+            shuffle($products);
+            return array_slice($products, 0, $limit); 
         }
-
-        public function importLearningData($data) {
-            return false;
+        public function getCategoryInsights($categoryId) { return []; }
+        public function analyzeCategoryPerformance($categoryId, $count, $totalValue) { return []; }
+        public function getCategoryRecommendations($categoryId) { return []; }
+        public function getCartRecommendations($items) { return []; }
+        public function findSimilarProducts($item) { return []; }
+        public function analyzeSentiment($comment) { return 'neutral'; }
+        public function extractReviewKeywords($comment) { return explode(' ', mb_substr($comment, 0, 50)); }
+        public function analyzeRatingTrend($reviews) { return 'stable'; }
+        public function analyzeProductRating($productId, $average, $validRatings) { return []; }
+        public function analyzeReviewBeforeSave($reviewData) {
+            return ['sentiment' => 'neutral', 'spam_score' => 0.1, 'quality_score' => 0.8];
         }
-
+        public function analyzeOrder($order) { return []; }
+        public function getOrderRecommendations($order) { return []; }
+        public function generateDashboardInsights($stats, $products, $orders) { return []; }
+        public function getDashboardRecommendations($stats) {
+            return [[
+                'title' => 'Активируйте ИИ модуль',
+                'description' => 'Для полной функциональности подключите модуль ИИ',
+                'icon' => 'fas fa-robot',
+                'priority' => 'Высокий',
+                'type' => 'important'
+            ]];
+        }
+        public function analyzeTrends($orders, $products) {
+            return [[
+                'title' => 'Общие продажи',
+                'description' => 'Стабильный рост',
+                'trend' => 'up',
+                'change' => 5,
+                'forecast' => 'Положительный'
+            ]];
+        }
+        public function calculateSEOScore($title, $description, $tags) { return 70; }
+        public function exportLearningData() { return ['message' => 'ИИ модуль не активен']; }
+        public function importLearningData($data) { return false; }
         public function analyzeOverallPerformance($products, $orders, $reviews) {
             return [
                 'efficiency_score' => 0,
@@ -94,109 +105,8 @@ if (!file_exists($aiModulePath)) {
                 'overall_rating' => 0
             ];
         }
-
-        public function sortByRelevance($products, $search) {
-            return $products;
-        }
-
-        public function getProductRecommendations($product) {
-            return [];
-        }
-
-        public function findRelatedProducts($product) {
-            return [];
-        }
-
-        public function calculateSEOScore($title, $description, $tags) {
-            return 70;
-        }
-
-        public function selectFeaturedProducts($products, $limit) {
-            return array_slice($products, 0, $limit);
-        }
-
-        public function getCategoryInsights($categoryId) {
-            return [];
-        }
-
-        public function analyzeCategoryPerformance($categoryId, $count, $totalValue) {
-            return [];
-        }
-
-        public function getCategoryRecommendations($categoryId) {
-            return [];
-        }
-
-        public function getCartRecommendations($items) {
-            return [];
-        }
-
-        public function findSimilarProducts($item) {
-            return [];
-        }
-
-        public function analyzeSentiment($comment) {
-            return 'neutral';
-        }
-
-        public function extractReviewKeywords($comment) {
-            return [];
-        }
-
-        public function analyzeRatingTrend($reviews) {
-            return 'stable';
-        }
-
-        public function analyzeProductRating($productId, $average, $validRatings) {
-            return [];
-        }
-
-        public function analyzeReviewBeforeSave($reviewData) {
-            return [
-                'sentiment' => 'neutral',
-                'spam_score' => 0.1,
-                'quality_score' => 0.8
-            ];
-        }
-
-        public function analyzeOrder($order) {
-            return [];
-        }
-
-        public function getOrderRecommendations($order) {
-            return [];
-        }
-
-        public function generateDashboardInsights($stats, $products, $orders) {
-            return [];
-        }
-
-        public function getDashboardRecommendations($stats) {
-            return [
-                [
-                    'title' => 'Активируйте ИИ модуль',
-                    'description' => 'Для полной функциональности подключите модуль ИИ',
-                    'icon' => 'fas fa-robot',
-                    'priority' => 'Высокий',
-                    'type' => 'important'
-                ]
-            ];
-        }
-
-        public function analyzeTrends($orders, $products) {
-            return [
-                [
-                    'title' => 'Общие продажи',
-                    'description' => 'Стабильный рост',
-                    'trend' => 'up',
-                    'change' => 5,
-                    'forecast' => 'Положительный'
-                ]
-            ];
-        }
     }
 
-    // Логируем предупреждение
     error_log('ВНИМАНИЕ: ИИ модуль не найден по пути: ' . $aiModulePath . '. Используется заглушка.');
 } else {
     require_once $aiModulePath;
@@ -272,7 +182,7 @@ function saveJsonData($filename, $data) {
     return $result !== false;
 }
 
-// ========== ИИ ИНТЕГРИРОВАННЫЕ ФУНКЦИИ ТОВАРОВ ==========
+// ========== ТОВАРЫ ==========
 
 function getProducts($filters = []) {
     $products = loadJsonData('products.json');
@@ -289,7 +199,7 @@ function getProducts($filters = []) {
             $name = mb_strtolower($product['name'] ?? '');
             $desc = mb_strtolower($product['description'] ?? '');
             $tags = mb_strtolower($product['tags'] ?? '');
-            return mb_strpos($name, $search) !== false || 
+            return mb_strpos($name, $search) !== false ||
                    mb_strpos($desc, $search) !== false ||
                    mb_strpos($tags, $search) !== false;
         });
@@ -331,26 +241,17 @@ function getProductById($id) {
     $products = loadJsonData('products.json');
     foreach ($products as $product) {
         if (isset($product['id']) && $product['id'] == $id) {
-            // ИИ улучшение: автоматическое обогащение данных товара
             return enrichProductWithAI($product);
         }
     }
     return null;
 }
 
-/**
- * ИИ функция обогащения данных товара
- */
 function enrichProductWithAI($product) {
     $ai = getAquaAI();
 
-    // Добавляем ИИ рекомендации
     $product['ai_recommendations'] = $ai->getProductRecommendations($product);
-
-    // Добавляем связанные товары
     $product['related_products'] = $ai->findRelatedProducts($product);
-
-    // Добавляем SEO рейтинг
     $product['seo_score'] = $ai->calculateSEOScore(
         $product['meta_title'] ?? $product['name'] ?? '',
         $product['meta_description'] ?? '',
@@ -364,7 +265,6 @@ function getFeaturedProducts($limit = 8) {
     $products = getProducts();
     if (empty($products)) return [];
 
-    // ИИ улучшение: умный выбор рекомендуемых товаров
     $ai = getAquaAI();
     $featured = $ai->selectFeaturedProducts($products, $limit);
 
@@ -373,14 +273,11 @@ function getFeaturedProducts($limit = 8) {
 
 function saveProduct($productData) {
     try {
-        // ИИ улучшение: автоматическая оптимизация перед сохранением
         $ai = getAquaAI();
 
         if (empty($productData['ai_generated'])) {
-            // Если товар не создан ИИ, улучшаем его
             $improvements = $ai->improveProduct($productData);
 
-            // Применяем только отсутствующие поля
             foreach ($improvements as $field => $value) {
                 if (empty($productData[$field]) && !empty($value)) {
                     $productData[$field] = $value;
@@ -411,9 +308,7 @@ function saveProduct($productData) {
         }
 
         if (saveJsonData('products.json', $products)) {
-            // ИИ обучение: учимся на созданном товаре
             $ai->learnFromUserAction('product_created', $productData, true);
-
             return ['success' => true, 'product_id' => $productData['id']];
         } else {
             return ['success' => false, 'error' => 'Не удалось сохранить в файл'];
@@ -441,7 +336,6 @@ function deleteProduct($id) {
         $result = saveJsonData('products.json', array_values($products));
 
         if ($result && $deletedProduct) {
-            // ИИ обучение: учимся на удалении товаров
             $ai = getAquaAI();
             $ai->learnFromUserAction('product_deleted', $deletedProduct, true);
         }
@@ -452,70 +346,11 @@ function deleteProduct($id) {
     }
 }
 
-// ========== ИИ ФУНКЦИИ ДЛЯ AJAX ЗАПРОСОВ ==========
-
-/**
- * Обработка ИИ запросов для создания товаров
- */
-function handleProductAIRequest($action, $data) {
-    $ai = getAquaAI();
-    return $ai->handleAjaxRequest($action, $data);
-}
-
-/**
- * ИИ генерация названия товара
- */
-function aiGenerateProductName($category, $keywords = []) {
-    $ai = getAquaAI();
-    return $ai->generateProductName($category, $keywords);
-}
-
-/**
- * ИИ генерация описания товара
- */
-function aiGenerateProductDescription($name, $category, $existingData = []) {
-    $ai = getAquaAI();
-    return $ai->generateProductDescription($name, $category, $existingData);
-}
-
-/**
- * ИИ предложение цены
- */
-function aiSuggestProductPrice($name, $category, $marketData = []) {
-    $ai = getAquaAI();
-    return $ai->suggestOptimalPrice($name, $category, $marketData);
-}
-
-/**
- * ИИ генерация SEO данных
- */
-function aiGenerateSEOData($name, $description, $category) {
-    $ai = getAquaAI();
-    return $ai->generateSEOData($name, $description, $category);
-}
-
-/**
- * ИИ анализ товара
- */
-function aiAnalyzeProduct($productData) {
-    $ai = getAquaAI();
-    return $ai->analyzeProduct($productData);
-}
-
-/**
- * ИИ улучшение товара
- */
-function aiImproveProduct($productData) {
-    $ai = getAquaAI();
-    return $ai->improveProduct($productData);
-}
-
-// ========== КАТЕГОРИИ С ИИ УЛУЧШЕНИЯМИ ==========
+// ========== КАТЕГОРИИ ==========
 
 function getCategories() {
     $categories = loadJsonData('categories.json');
 
-    // ИИ улучшение: добавляем рекомендации для каждой категории
     $ai = getAquaAI();
     foreach ($categories as &$category) {
         $category['ai_insights'] = $ai->getCategoryInsights($category['id']);
@@ -543,7 +378,6 @@ function getCategoriesWithCount() {
         $category['total_value'] = $totalValue;
         $category['avg_price'] = $count > 0 ? round($totalValue / $count) : 0;
 
-        // ИИ анализ категории
         $ai = getAquaAI();
         $category['ai_analysis'] = $ai->analyzeCategoryPerformance($category['id'], $count, $totalValue);
     }
@@ -556,7 +390,6 @@ function getCategoryById($id) {
     $categories = loadJsonData('categories.json');
     foreach ($categories as $category) {
         if (isset($category['id']) && $category['id'] == $id) {
-            // ИИ обогащение данных категории
             $ai = getAquaAI();
             $category['ai_recommendations'] = $ai->getCategoryRecommendations($id);
             return $category;
@@ -565,7 +398,352 @@ function getCategoryById($id) {
     return null;
 }
 
-// ========== КОРЗИНА С ИИ РЕКОМЕНДАЦИЯМИ ==========
+function deleteCategory($id) {
+    $categories = loadJsonData('categories.json');
+    $categories = array_filter($categories, function($category) use ($id) {
+        return $category['id'] != $id;
+    });
+    return saveJsonData('categories.json', array_values($categories));
+}
+
+function saveCategory($categoryData) {
+    $categories = loadJsonData('categories.json');
+
+    if (empty($categoryData['id'])) {
+        // Генерируем новый ID
+        $maxId = 0;
+        foreach ($categories as $cat) {
+            if (isset($cat['id']) && $cat['id'] > $maxId) {
+                $maxId = $cat['id'];
+            }
+        }
+        $categoryData['id'] = $maxId + 1;
+        $categoryData['created_at'] = date('Y-m-d H:i:s');
+    }
+
+    $categoryData['updated_at'] = date('Y-m-d H:i:s');
+
+    $categoryExists = false;
+    foreach ($categories as $key => $category) {
+        if ($category['id'] == $categoryData['id']) {
+            $categories[$key] = $categoryData;
+            $categoryExists = true;
+            break;
+        }
+    }
+
+    if (!$categoryExists) {
+        $categories[] = $categoryData;
+    }
+
+    return saveJsonData('categories.json', $categories);
+}
+
+// ========== ЗАКАЗЫ ==========
+
+function saveOrder($orderData) {
+    $orders = loadJsonData('orders.json');
+
+    $order = [
+        'id' => time() . '_' . uniqid(),
+        'date' => date('Y-m-d H:i:s'),
+        'status' => 'new',
+        'customer' => $orderData['customer'] ?? [],
+        'items' => $orderData['items'] ?? [],
+        'total' => $orderData['total'] ?? 0
+    ];
+
+    $ai = getAquaAI();
+    $order['ai_analysis'] = $ai->analyzeOrder($order);
+    $order['ai_recommendations'] = $ai->getOrderRecommendations($order);
+
+    $orders[] = $order;
+
+    if (saveJsonData('orders.json', $orders)) {
+        $ai->learnFromUserAction('order_created', $order, true);
+        return $order['id'];
+    }
+    return false;
+}
+
+function getOrders() {
+    return loadJsonData('orders.json');
+}
+
+function getOrderById($id) {
+    $orders = getOrders();
+    foreach ($orders as $order) {
+        if ($order['id'] == $id) {
+            return $order;
+        }
+    }
+    return null;
+}
+
+function updateOrderStatus($id, $status) {
+    $orders = loadJsonData('orders.json');
+    foreach ($orders as &$order) {
+        if ($order['id'] == $id) {
+            $order['status'] = $status;
+            $order['updated_at'] = date('Y-m-d H:i:s');
+
+            $result = saveJsonData('orders.json', $orders);
+
+            if ($result) {
+                $ai = getAquaAI();
+                $ai->learnFromUserAction('order_status_changed', [
+                    'order_id' => $id,
+                    'new_status' => $status,
+                    'order_data' => $order
+                ], true);
+            }
+
+            return $result;
+        }
+    }
+    return false;
+}
+
+// ========== ОТЗЫВЫ ==========
+
+function getAllReviews() {
+    return loadJsonData('reviews.json');
+}
+
+function getReviewById($id) {
+    $reviews = getAllReviews();
+    foreach ($reviews as $review) {
+        if ($review['id'] === $id) {
+            return $review;
+        }
+    }
+    return null;
+}
+
+function getProductReviews($productId) {
+    $reviews = loadJsonData('reviews.json');
+    $productReviews = array_filter($reviews, function($review) use ($productId) {
+        return isset($review['product_id']) && $review['product_id'] == $productId &&
+               isset($review['status']) && $review['status'] === 'approved';
+    });
+
+    $ai = getAquaAI();
+    $reviewsArray = array_values($productReviews);
+
+    foreach ($reviewsArray as &$review) {
+        $review['ai_sentiment'] = $ai->analyzeSentiment($review['comment']);
+        $review['ai_keywords'] = $ai->extractReviewKeywords($review['comment']);
+    }
+
+    return $reviewsArray;
+}
+
+function getProductRating($productId) {
+    $reviews = getProductReviews($productId);
+    if (empty($reviews)) {
+        return ['average' => 0, 'count' => 0];
+    }
+
+    $ratings = array_column($reviews, 'rating');
+    $validRatings = array_filter($ratings, function($rating) {
+        return is_numeric($rating) && $rating > 0 && $rating <= 5;
+    });
+
+    if (empty($validRatings)) {
+        return ['average' => 0, 'count' => 0];
+    }
+
+    $average = array_sum($validRatings) / count($validRatings);
+
+    $ai = getAquaAI();
+    $trend = $ai->analyzeRatingTrend($reviews);
+
+    return [
+        'average' => round($average, 1),
+        'count' => count($validRatings),
+        'trend' => $trend,
+        'ai_analysis' => $ai->analyzeProductRating($productId, $average, $validRatings)
+    ];
+}
+
+function saveReview($reviewData) {
+    try {
+        if (empty($reviewData['product_id']) || empty($reviewData['customer_name']) ||
+            empty($reviewData['comment']) || !isset($reviewData['rating'])) {
+            return ['success' => false, 'message' => 'Заполните все обязательные поля'];
+        }
+
+        if (!is_numeric($reviewData['rating']) || $reviewData['rating'] < 1 || $reviewData['rating'] > 5) {
+            return ['success' => false, 'message' => 'Некорректный рейтинг'];
+        }
+
+        $product = getProductById($reviewData['product_id']);
+        if (!$product) {
+            return ['success' => false, 'message' => 'Товар не найден'];
+        }
+
+        $ai = getAquaAI();
+        $aiAnalysis = $ai->analyzeReviewBeforeSave($reviewData);
+
+        $reviewData['ai_sentiment'] = $aiAnalysis['sentiment'];
+        $reviewData['ai_spam_score'] = $aiAnalysis['spam_score'];
+        $reviewData['ai_quality_score'] = $aiAnalysis['quality_score'];
+
+        $reviews = getAllReviews();
+
+        if (empty($reviewData['id'])) {
+            $reviewData['id'] = generateUniqueId();
+            $reviewData['created_at'] = date('Y-m-d H:i:s');
+        }
+
+        $reviewData['updated_at'] = date('Y-m-d H:i:s');
+
+        if (!isset($reviewData['status'])) {
+            if ($aiAnalysis['quality_score'] > 0.7 && $aiAnalysis['spam_score'] < 0.3) {
+                $reviewData['status'] = 'approved';
+            } else {
+                $reviewData['status'] = 'pending';
+            }
+        }
+
+        $exists = false;
+        foreach ($reviews as $key => $review) {
+            if ($review['id'] === $reviewData['id']) {
+                $reviews[$key] = $reviewData;
+                $exists = true;
+                break;
+            }
+        }
+
+        if (!$exists) {
+            $reviews[] = $reviewData;
+        }
+
+        if (saveJsonData('reviews.json', $reviews)) {
+            $ai->learnFromUserAction('review_created', $reviewData, true);
+            return ['success' => true, 'message' => 'Отзыв сохранен успешно'];
+        } else {
+            return ['success' => false, 'message' => 'Ошибка сохранения отзыва'];
+        }
+    } catch (Exception $e) {
+        error_log('Ошибка сохранения отзыва: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Внутренняя ошибка сервера'];
+    }
+}
+
+function updateReviewStatus($id, $status) {
+    if (!in_array($status, ['pending', 'approved', 'rejected'])) {
+        return false;
+    }
+
+    $reviews = getAllReviews();
+    foreach ($reviews as &$review) {
+        if ($review['id'] === $id) {
+            $review['status'] = $status;
+            $review['updated_at'] = date('Y-m-d H:i:s');
+            return saveJsonData('reviews.json', $reviews);
+        }
+    }
+    return false;
+}
+
+function deleteReview($id) {
+    $reviews = getAllReviews();
+    $reviews = array_filter($reviews, function($review) use ($id) {
+        return $review['id'] !== $id;
+    });
+    return saveJsonData('reviews.json', array_values($reviews));
+}
+
+// ========== СТАТИСТИКА ==========
+
+function getDashboardStats() {
+    $products = getAllProducts();
+    $orders = getOrders();
+    $categories = getCategories();
+    $reviews = getAllReviews();
+
+    $activeProducts = array_filter($products, function($p) {
+        return !isset($p['status']) || $p['status'] == 1;
+    });
+
+    $stats = [
+        'total_products' => count($activeProducts),
+        'total_categories' => count($categories),
+        'total_orders' => count($orders),
+        'total_reviews' => count($reviews),
+        'today_orders' => 0,
+        'month_orders' => 0,
+        'total_revenue' => 0,
+        'month_revenue' => 0
+    ];
+
+    $today = date('Y-m-d');
+
+    foreach ($orders as $order) {
+        $orderDate = date('Y-m-d', strtotime($order['date']));
+        $orderMonth = date('Y-m', strtotime($order['date']));
+
+        if ($orderDate === $today) {
+            $stats['today_orders']++;
+        }
+
+        if ($orderMonth === date('Y-m')) {
+            $stats['month_orders']++;
+            $stats['month_revenue'] += $order['total'] ?? 0;
+        }
+
+        $stats['total_revenue'] += $order['total'] ?? 0;
+    }
+
+    $ai = getAquaAI();
+    $stats['ai_insights'] = $ai->generateDashboardInsights($stats, $products, $orders);
+    $stats['ai_recommendations'] = $ai->getDashboardRecommendations($stats);
+    $stats['ai_trends'] = $ai->analyzeTrends($orders, $products);
+
+    return $stats;
+}
+
+// ========== ИИ ФУНКЦИИ ДЛЯ АДМИН ПАНЕЛИ ==========
+
+/**
+ * ИСПРАВЛЕНО: Получение статистики ИИ для админки
+ */
+function getAIAdminStats() {
+    $ai = getAquaAI();
+    return $ai->getAIStats();
+}
+
+/**
+ * Экспорт данных обучения ИИ
+ */
+function exportAILearningData() {
+    $ai = getAquaAI();
+    return $ai->exportLearningData();
+}
+
+/**
+ * Импорт данных обучения ИИ
+ */
+function importAILearningData($data) {
+    $ai = getAquaAI();
+    return $ai->importLearningData($data);
+}
+
+/**
+ * ИИ анализ производительности сайта
+ */
+function getAIPerformanceAnalysis() {
+    $ai = getAquaAI();
+
+    $products = getAllProducts();
+    $orders = getOrders();
+    $reviews = getAllReviews();
+
+    return $ai->analyzeOverallPerformance($products, $orders, $reviews);
+}
+
+// ========== КОРЗИНА ==========
 
 function initCart() {
     if (!initSession()) {
@@ -610,7 +788,6 @@ function addToCart($productId, $quantity = 1) {
         error_log("КОРЗИНА: Добавлен новый товар $productId в количестве $quantity");
     }
 
-    // ИИ обучение: анализ поведения в корзине
     $ai = getAquaAI();
     $ai->learnFromUserAction('cart_add', [
         'product_id' => $productId,
@@ -642,7 +819,6 @@ function getCartItems() {
         }
     }
 
-    // ИИ улучшение: добавляем рекомендации к корзине
     $ai = getAquaAI();
     $recommendations = $ai->getCartRecommendations($items);
 
@@ -714,7 +890,7 @@ function clearCart() {
     return true;
 }
 
-// ========== ИЗБРАННОЕ С ИИ РЕКОМЕНДАЦИЯМИ ==========
+// ========== ИЗБРАННОЕ ==========
 
 function initFavorites() {
     if (!initSession()) {
@@ -749,7 +925,6 @@ function getFavoritesItems() {
         }
     }
 
-    // ИИ улучшение: персонализированные рекомендации на основе избранного
     if (!empty($items)) {
         $ai = getAquaAI();
         foreach ($items as &$item) {
@@ -775,7 +950,6 @@ function addToFavorites($productId) {
         $_SESSION['favorites'][] = $productId;
         error_log("ИЗБРАННОЕ: Добавлен товар $productId");
 
-        // ИИ обучение: анализ предпочтений пользователя
         $ai = getAquaAI();
         $ai->learnFromUserAction('favorites_add', [
             'product_id' => $productId,
@@ -823,296 +997,7 @@ function clearFavorites() {
     return true;
 }
 
-// ========== ОТЗЫВЫ С ИИ АНАЛИЗОМ ==========
-
-function getAllReviews() {
-    return loadJsonData('reviews.json');
-}
-
-function getReviewById($id) {
-    $reviews = getAllReviews();
-    foreach ($reviews as $review) {
-        if ($review['id'] === $id) {
-            return $review;
-        }
-    }
-    return null;
-}
-
-function getProductReviews($productId) {
-    $reviews = loadJsonData('reviews.json');
-    $productReviews = array_filter($reviews, function($review) use ($productId) {
-        return isset($review['product_id']) && $review['product_id'] == $productId &&
-               isset($review['status']) && $review['status'] === 'approved';
-    });
-
-    // ИИ улучшение: анализ отзывов для каждого товара
-    $ai = getAquaAI();
-    $reviewsArray = array_values($productReviews);
-
-    foreach ($reviewsArray as &$review) {
-        $review['ai_sentiment'] = $ai->analyzeSentiment($review['comment']);
-        $review['ai_keywords'] = $ai->extractReviewKeywords($review['comment']);
-    }
-
-    return $reviewsArray;
-}
-
-function getProductRating($productId) {
-    $reviews = getProductReviews($productId);
-    if (empty($reviews)) {
-        return ['average' => 0, 'count' => 0];
-    }
-
-    $ratings = array_column($reviews, 'rating');
-    $validRatings = array_filter($ratings, function($rating) {
-        return is_numeric($rating) && $rating > 0 && $rating <= 5;
-    });
-
-    if (empty($validRatings)) {
-        return ['average' => 0, 'count' => 0];
-    }
-
-    $average = array_sum($validRatings) / count($validRatings);
-
-    // ИИ улучшение: анализ трендов рейтинга
-    $ai = getAquaAI();
-    $trend = $ai->analyzeRatingTrend($reviews);
-
-    return [
-        'average' => round($average, 1),
-        'count' => count($validRatings),
-        'trend' => $trend,
-        'ai_analysis' => $ai->analyzeProductRating($productId, $average, $validRatings)
-    ];
-}
-
-function saveReview($reviewData) {
-    try {
-        if (empty($reviewData['product_id']) || empty($reviewData['customer_name']) ||
-            empty($reviewData['comment']) || !isset($reviewData['rating'])) {
-            return ['success' => false, 'message' => 'Заполните все обязательные поля'];
-        }
-
-        if (!is_numeric($reviewData['rating']) || $reviewData['rating'] < 1 || $reviewData['rating'] > 5) {
-            return ['success' => false, 'message' => 'Некорректный рейтинг'];
-        }
-
-        $product = getProductById($reviewData['product_id']);
-        if (!$product) {
-            return ['success' => false, 'message' => 'Товар не найден'];
-        }
-
-        // ИИ анализ отзыва перед сохранением
-        $ai = getAquaAI();
-        $aiAnalysis = $ai->analyzeReviewBeforeSave($reviewData);
-
-        // Добавляем ИИ данные к отзыву
-        $reviewData['ai_sentiment'] = $aiAnalysis['sentiment'];
-        $reviewData['ai_spam_score'] = $aiAnalysis['spam_score'];
-        $reviewData['ai_quality_score'] = $aiAnalysis['quality_score'];
-
-        $reviews = getAllReviews();
-
-        if (empty($reviewData['id'])) {
-            $reviewData['id'] = generateUniqueId();
-            $reviewData['created_at'] = date('Y-m-d H:i:s');
-        }
-
-        $reviewData['updated_at'] = date('Y-m-d H:i:s');
-
-        // Автоматическое одобрение на основе ИИ анализа
-        if (!isset($reviewData['status'])) {
-            if ($aiAnalysis['quality_score'] > 0.7 && $aiAnalysis['spam_score'] < 0.3) {
-                $reviewData['status'] = 'approved';
-            } else {
-                $reviewData['status'] = 'pending';
-            }
-        }
-
-        $exists = false;
-        foreach ($reviews as $key => $review) {
-            if ($review['id'] === $reviewData['id']) {
-                $reviews[$key] = $reviewData;
-                $exists = true;
-                break;
-            }
-        }
-
-        if (!$exists) {
-            $reviews[] = $reviewData;
-        }
-
-        if (saveJsonData('reviews.json', $reviews)) {
-            // ИИ обучение на отзывах
-            $ai->learnFromUserAction('review_created', $reviewData, true);
-
-            return ['success' => true, 'message' => 'Отзыв сохранен успешно'];
-        } else {
-            return ['success' => false, 'message' => 'Ошибка сохранения отзыва'];
-        }
-    } catch (Exception $e) {
-        error_log('Ошибка сохранения отзыва: ' . $e->getMessage());
-        return ['success' => false, 'message' => 'Внутренняя ошибка сервера'];
-    }
-}
-
-// ========== ЗАКАЗЫ С ИИ АНАЛИТИКОЙ ==========
-
-function saveOrder($orderData) {
-    $orders = loadJsonData('orders.json');
-
-    $order = [
-        'id' => time() . '_' . uniqid(),
-        'date' => date('Y-m-d H:i:s'),
-        'status' => 'new',
-        'customer' => $orderData['customer'] ?? [],
-        'items' => $orderData['items'] ?? [],
-        'total' => $orderData['total'] ?? 0
-    ];
-
-    // ИИ анализ заказа
-    $ai = getAquaAI();
-    $order['ai_analysis'] = $ai->analyzeOrder($order);
-    $order['ai_recommendations'] = $ai->getOrderRecommendations($order);
-
-    $orders[] = $order;
-
-    if (saveJsonData('orders.json', $orders)) {
-        // ИИ обучение на заказах
-        $ai->learnFromUserAction('order_created', $order, true);
-        return $order['id'];
-    }
-    return false;
-}
-
-function getOrders() {
-    return loadJsonData('orders.json');
-}
-
-function updateOrderStatus($id, $status) {
-    $orders = loadJsonData('orders.json');
-    foreach ($orders as &$order) {
-        if ($order['id'] == $id) {
-            $order['status'] = $status;
-            $order['updated_at'] = date('Y-m-d H:i:s');
-
-            $result = saveJsonData('orders.json', $orders);
-
-            if ($result) {
-                // ИИ обучение на смене статуса
-                $ai = getAquaAI();
-                $ai->learnFromUserAction('order_status_changed', [
-                    'order_id' => $id,
-                    'new_status' => $status,
-                    'order_data' => $order
-                ], true);
-            }
-
-            return $result;
-        }
-    }
-    return false;
-}
-
-// ========== ИИ УЛУЧШЕННАЯ АНАЛИТИКА ==========
-
-function getDashboardStats() {
-    $products = getAllProducts();
-    $orders = getOrders();
-    $categories = getCategories();
-    $reviews = getAllReviews();
-
-    $activeProducts = array_filter($products, function($p) {
-        return !isset($p['status']) || $p['status'] == 1;
-    });
-
-    // Базовая статистика
-    $stats = [
-        'total_products' => count($activeProducts),
-        'total_categories' => count($categories),
-        'total_orders' => count($orders),
-        'total_reviews' => count($reviews),
-        'today_orders' => 0,
-        'month_orders' => 0,
-        'total_revenue' => 0,
-        'month_revenue' => 0
-    ];
-
-    // Расчет доходов и заказов
-    $today = date('Y-m-d');
-    $monthStart = date('Y-m-01');
-
-    foreach ($orders as $order) {
-        $orderDate = date('Y-m-d', strtotime($order['date']));
-        $orderMonth = date('Y-m', strtotime($order['date']));
-
-        if ($orderDate === $today) {
-            $stats['today_orders']++;
-        }
-
-        if ($orderMonth === date('Y-m')) {
-            $stats['month_orders']++;
-            $stats['month_revenue'] += $order['total'] ?? 0;
-        }
-
-        $stats['total_revenue'] += $order['total'] ?? 0;
-    }
-
-    // ИИ улучшения статистики
-    $ai = getAquaAI();
-    $stats['ai_insights'] = $ai->generateDashboardInsights($stats, $products, $orders);
-    $stats['ai_recommendations'] = $ai->getDashboardRecommendations($stats);
-    $stats['ai_trends'] = $ai->analyzeTrends($orders, $products);
-
-    return $stats;
-}
-
-// ========== ИИ ФУНКЦИИ ДЛЯ АДМИН ПАНЕЛИ ==========
-
-/**
- * Получение статистики ИИ для админки
- */
-function getAIAdminStats() {
-    $ai = getAquaAI();
-    return $ai->getAIStats();
-}
-
-/**
- * Экспорт данных обучения ИИ
- */
-function exportAILearningData() {
-    $ai = getAquaAI();
-    return $ai->exportLearningData();
-}
-
-/**
- * Импорт данных обучения ИИ
- */
-function importAILearningData($data) {
-    $ai = getAquaAI();
-    return $ai->importLearningData($data);
-}
-
-/**
- * ИИ анализ производительности сайта
- */
-function getAIPerformanceAnalysis() {
-    $ai = getAquaAI();
-
-    $products = getAllProducts();
-    $orders = getOrders();
-    $reviews = getAllReviews();
-
-    return $ai->analyzeOverallPerformance($products, $orders, $reviews);
-}
-
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
-
-function formatPrice($price) {
-    if (!is_numeric($price)) return '0 ₽';
-    return number_format((float)$price, 0, ',', ' ') . ' ₽';
-}
+// ========== НАСТРОЙКИ ==========
 
 function getSiteSettings() {
     return loadJsonData('settings.json');
@@ -1122,32 +1007,65 @@ function saveSiteSettings($settingsData) {
     return saveJsonData('settings.json', $settingsData);
 }
 
-function generateUniqueId() {
-    return 'item_' . time() . '_' . uniqid();
+// ========== ПОЛЬЗОВАТЕЛИ ==========
+
+function getUsers() {
+    return loadJsonData('users.json');
 }
 
-function updateReviewStatus($id, $status) {
-    if (!in_array($status, ['pending', 'approved', 'rejected'])) {
-        return false;
-    }
-
-    $reviews = getAllReviews();
-    foreach ($reviews as &$review) {
-        if ($review['id'] === $id) {
-            $review['status'] = $status;
-            $review['updated_at'] = date('Y-m-d H:i:s');
-            return saveJsonData('reviews.json', $reviews);
+function getUserById($id) {
+    $users = getUsers();
+    foreach ($users as $user) {
+        if ($user['id'] == $id) {
+            return $user;
         }
     }
-    return false;
+    return null;
 }
 
-function deleteReview($id) {
-    $reviews = getAllReviews();
-    $reviews = array_filter($reviews, function($review) use ($id) {
-        return $review['id'] !== $id;
+function saveUser($userData) {
+    $users = loadJsonData('users.json');
+
+    if (empty($userData['id'])) {
+        $userData['id'] = 'user_' . time() . '_' . uniqid();
+        $userData['created_at'] = date('Y-m-d H:i:s');
+    }
+
+    $userData['updated_at'] = date('Y-m-d H:i:s');
+
+    $userExists = false;
+    foreach ($users as $key => $user) {
+        if ($user['id'] == $userData['id']) {
+            $users[$key] = $userData;
+            $userExists = true;
+            break;
+        }
+    }
+
+    if (!$userExists) {
+        $users[] = $userData;
+    }
+
+    return saveJsonData('users.json', $users);
+}
+
+function deleteUser($id) {
+    $users = loadJsonData('users.json');
+    $users = array_filter($users, function($user) use ($id) {
+        return $user['id'] != $id;
     });
-    return saveJsonData('reviews.json', array_values($reviews));
+    return saveJsonData('users.json', array_values($users));
+}
+
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+
+function formatPrice($price) {
+    if (!is_numeric($price)) return '0 ₽';
+    return number_format((float)$price, 0, ',', ' ') . ' ₽';
+}
+
+function generateUniqueId() {
+    return 'item_' . time() . '_' . uniqid();
 }
 
 function getProductLabels($productId) {
@@ -1203,19 +1121,56 @@ function initializeDefaultData() {
         saveSiteSettings($defaultSettings);
     }
 
-    // Инициализация ИИ данных
-    if (!file_exists(__DIR__ . '/data/ai_learning.json')) {
-        saveJsonData('ai_learning.json', [
+    // Инициализация файлов данных
+    $dataFiles = [
+        'products.json' => [],
+        'orders.json' => [],
+        'reviews.json' => [],
+        'users.json' => [],
+        'ai_learning.json' => [
             'successful_generations' => [],
             'user_preferences' => [],
             'popular_combinations' => [],
             'pricing_patterns' => [],
             'seo_success_rates' => []
-        ]);
-    }
+        ],
+        'ai_user_actions.json' => []
+    ];
 
-    if (!file_exists(__DIR__ . '/data/ai_user_actions.json')) {
-        saveJsonData('ai_user_actions.json', []);
+    foreach ($dataFiles as $filename => $defaultData) {
+        if (!file_exists(__DIR__ . '/data/' . $filename)) {
+            saveJsonData($filename, $defaultData);
+        }
+    }
+}
+
+// ========== ОБРАБОТКА AJAX ЗАПРОСОВ ==========
+
+function handleAjaxRequest($action, $data) {
+    switch ($action) {
+        case 'get_product':
+            return getProductById($data['id'] ?? '');
+
+        case 'get_products':
+            return getProducts($data);
+
+        case 'get_categories':
+            return getCategories();
+
+        case 'get_orders':
+            return getOrders();
+
+        case 'get_reviews':
+            return getAllReviews();
+
+        case 'get_stats':
+            return getDashboardStats();
+
+        case 'get_ai_stats':
+            return getAIAdminStats();
+
+        default:
+            return ['error' => 'Неизвестное действие'];
     }
 }
 
