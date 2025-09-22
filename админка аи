@@ -1,0 +1,1076 @@
+<?php
+mb_internal_encoding('UTF-8');
+date_default_timezone_set('Europe/Moscow');
+session_start();
+
+$BASE = __DIR__;
+$configFile = $BASE.'/config.json';
+$aiKnowledgeFile = $BASE.'/ai_knowledge.json';
+$aiTrainingFile = $BASE.'/ai_training.json';
+$aiContextFile = $BASE.'/ai_context.json';
+$aiStatsFile = $BASE.'/ai_stats.json';
+$chatLog = $BASE.'/chat_log.txt';
+$uploadsDir = $BASE.'/uploads';
+
+// Загружаем конфиг для проверки пароля
+$cfg = json_decode(@file_get_contents($configFile), true);
+if (!$cfg || !isset($cfg['admin_pass'])) {
+  die('Ошибка загрузки конфигурации');
+}
+
+// Проверка авторизации
+if (empty($_SESSION['ai_admin']) && !isset($_POST['ai_admin_login'])) {
+  showLoginForm();
+  exit;
+}
+
+if (isset($_POST['ai_admin_login'])) {
+  $pass = $_POST['password'] ?? '';
+  if (hash_equals($cfg['admin_pass'], $pass)) {
+    $_SESSION['ai_admin'] = true;
+    header('Location: ai_admin.php');
+    exit;
+  } else {
+    showLoginForm('Неверный пароль');
+    exit;
+  }
+}
+
+// УЛУЧШЕННАЯ обработка загрузки файлов
+if (isset($_POST['upload_training_file'])) {
+  if (isset($_FILES['training_file']) && $_FILES['training_file']['error'] === 0) {
+    $uploadedFile = $_FILES['training_file'];
+    $filename = $uploadedFile['name'];
+    $tmpPath = $uploadedFile['tmp_name'];
+    $fileExt = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+    // Читаем содержимое файла
+    $content = file_get_contents($tmpPath);
+
+    // Определяем кодировку и конвертируем в UTF-8
+    $encoding = mb_detect_encoding($content, ['UTF-8', 'Windows-1251', 'CP1251', 'ISO-8859-1'], true);
+    if ($encoding && $encoding !== 'UTF-8') {
+      $content = mb_convert_encoding($content, 'UTF-8', $encoding);
+    }
+
+    $processedCount = 0;
+    $message = '';
+
+    try {
+      if ($fileExt === 'txt' || $fileExt === 'md') {
+        $processedCount = processTextFileImproved($content, $filename);
+        $message = "Текстовый файл обработан. Добавлено $processedCount записей.";
+      } elseif ($fileExt === 'json') {
+        $processedCount = processJsonFileImproved($content);
+        $message = "JSON файл обработан. Добавлено $processedCount записей.";
+      } elseif ($fileExt === 'csv') {
+        $processedCount = processCsvFileImproved($content);
+        $message = "CSV файл обработан. Добавлено $processedCount записей.";
+      } elseif ($fileExt === 'docx' || $fileExt === 'doc') {
+        $message = "DOCX/DOC файлы пока не поддерживаются. Сохраните как TXT.";
+      } else {
+        $message = "Неподдерживаемый формат файла: $fileExt";
+      }
+
+      // Сохраняем файл для архива
+      if ($processedCount > 0) {
+        $archiveFile = $uploadsDir . '/ai_archive_' . date('Y-m-d_H-i-s') . '_' . $filename;
+        copy($tmpPath, $archiveFile);
+      }
+
+    } catch (Exception $e) {
+      $message = "Ошибка обработки: " . $e->getMessage();
+    }
+
+    header('Location: ai_admin.php?upload_result=' . urlencode($message));
+    exit;
+  }
+}
+
+// Быстрое добавление знаний через форму
+if (isset($_POST['quick_add_knowledge'])) {
+  $question = trim($_POST['question'] ?? '');
+  $answer = trim($_POST['answer'] ?? '');
+  $category = trim($_POST['category'] ?? 'custom');
+
+  if ($question && $answer) {
+    $knowledge = json_decode(@file_get_contents($aiKnowledgeFile), true) ?: [];
+
+    if (!isset($knowledge[$category])) {
+      $knowledge[$category] = [];
+    }
+
+    // Добавляем как пару вопрос-ответ
+    $key = mb_strtolower(str_replace(['?', '!', '.'], '', $question));
+    $knowledge[$category][$key] = $answer;
+
+    file_put_contents($aiKnowledgeFile, json_encode($knowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+    // Также добавляем в тренировочные данные
+    $training = json_decode(@file_get_contents($aiTrainingFile), true) ?: ['conversations' => [], 'user_feedback' => [], 'learning_patterns' => [], 'context_memory' => []];
+
+    $training['conversations'][] = [
+      'timestamp' => date('Y-m-d H:i:s'),
+      'user_message' => $question,
+      'ai_response' => $answer,
+      'feedback' => 5,
+      'context' => ['manual_add'],
+      'source' => 'admin_quick_add'
+    ];
+
+    // Добавляем паттерны
+    $keywords = extractKeywordsFromText($question);
+    foreach($keywords as $keyword) {
+      if (!isset($training['learning_patterns'][$keyword])) {
+        $training['learning_patterns'][$keyword] = [];
+      }
+      $training['learning_patterns'][$keyword][] = $answer;
+    }
+
+    file_put_contents($aiTrainingFile, json_encode($training, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+    header('Location: ai_admin.php?quick_added=1');
+    exit;
+  }
+}
+
+// Массовое добавление через текстовое поле
+if (isset($_POST['bulk_add_knowledge'])) {
+  $bulkText = trim($_POST['bulk_text'] ?? '');
+
+  if ($bulkText) {
+    $processedCount = processBulkText($bulkText);
+    header('Location: ai_admin.php?bulk_result=' . urlencode("Обработано $processedCount записей"));
+    exit;
+  }
+}
+
+// Обновление базы знаний
+if (isset($_POST['update_knowledge'])) {
+  $newKnowledge = json_decode($_POST['knowledge_data'], true);
+  if ($newKnowledge) {
+    file_put_contents($aiKnowledgeFile, json_encode($newKnowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+    // Обновляем статистику
+    updateStats('knowledge_updates');
+
+    header('Location: ai_admin.php?updated=1');
+    exit;
+  }
+}
+
+// Сброс обучения
+if (isset($_POST['reset_training'])) {
+  $defaultTraining = [
+    'conversations' => [],
+    'user_feedback' => [],
+    'learning_patterns' => [],
+    'context_memory' => []
+  ];
+  file_put_contents($aiTrainingFile, json_encode($defaultTraining, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+  $defaultStats = [
+    'total_conversations' => 0,
+    'successful_responses' => 0,
+    'learning_events' => 0,
+    'user_satisfaction' => 0,
+    'knowledge_updates' => 0
+  ];
+  file_put_contents($aiStatsFile, json_encode($defaultStats, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+  header('Location: ai_admin.php?reset=1');
+  exit;
+}
+
+// УЛУЧШЕННЫЕ ФУНКЦИИ ОБРАБОТКИ
+
+function processTextFileImproved($content, $filename) {
+  global $aiKnowledgeFile, $aiTrainingFile;
+
+  $knowledge = json_decode(@file_get_contents($aiKnowledgeFile), true) ?: [];
+  $training = json_decode(@file_get_contents($aiTrainingFile), true) ?: ['conversations' => [], 'user_feedback' => [], 'learning_patterns' => [], 'context_memory' => []];
+
+  // Определяем категорию по имени файла
+  $category = 'imported_' . pathinfo($filename, PATHINFO_FILENAME);
+  $category = preg_replace('/[^a-zA-Z0-9_]/', '_', $category);
+
+  if (!isset($knowledge[$category])) {
+    $knowledge[$category] = [];
+  }
+
+  $lines = explode("\n", $content);
+  $processedCount = 0;
+  $currentQuestion = '';
+  $currentAnswer = '';
+
+  foreach ($lines as $line) {
+    $line = trim($line);
+    if (empty($line) || $line[0] === '#') continue;
+
+    // Различные форматы:
+    // 1. "Вопрос: Ответ"
+    // 2. "Q: A:"
+    // 3. "- Вопрос\n- Ответ"
+    // 4. Простой текст (каждая строка - знание)
+
+    if (preg_match('/^(.+?):\s*(.+)$/u', $line, $matches)) {
+      // Формат "ключ: значение"
+      $key = mb_strtolower(trim($matches[1]));
+      $value = trim($matches[2]);
+
+      $knowledge[$category][$key] = $value;
+
+      // Добавляем в тренировочные данные
+      addToTraining($training, $matches[1], $value, 'file_import');
+      $processedCount++;
+
+    } elseif (preg_match('/^[QВ]:\s*(.+)$/ui', $line, $matches)) {
+      // Вопрос
+      $currentQuestion = trim($matches[1]);
+
+    } elseif (preg_match('/^[AО]:\s*(.+)$/ui', $line, $matches) && $currentQuestion) {
+      // Ответ
+      $currentAnswer = trim($matches[1]);
+
+      $key = mb_strtolower(str_replace(['?', '!', '.'], '', $currentQuestion));
+      $knowledge[$category][$key] = $currentAnswer;
+
+      addToTraining($training, $currentQuestion, $currentAnswer, 'file_import');
+      $processedCount++;
+
+      $currentQuestion = '';
+      $currentAnswer = '';
+
+    } elseif (strpos($line, '-') === 0) {
+      // Формат списка
+      $text = trim(substr($line, 1));
+      if ($currentQuestion === '') {
+        $currentQuestion = $text;
+      } else {
+        $key = mb_strtolower(str_replace(['?', '!', '.'], '', $currentQuestion));
+        $knowledge[$category][$key] = $text;
+
+        addToTraining($training, $currentQuestion, $text, 'file_import');
+        $processedCount++;
+
+        $currentQuestion = '';
+      }
+
+    } elseif (mb_strlen($line) > 10) {
+      // Простая строка - добавляем как общее знание
+      $knowledge[$category][] = $line;
+      $processedCount++;
+    }
+  }
+
+  file_put_contents($aiKnowledgeFile, json_encode($knowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+  file_put_contents($aiTrainingFile, json_encode($training, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+  updateStats('knowledge_updates');
+
+  return $processedCount;
+}
+
+function processJsonFileImproved($content) {
+  global $aiKnowledgeFile;
+
+  $data = json_decode($content, true);
+  if (!$data) {
+    throw new Exception('Некорректный JSON формат');
+  }
+
+  $knowledge = json_decode(@file_get_contents($aiKnowledgeFile), true) ?: [];
+  $processedCount = 0;
+
+  // Рекурсивно обрабатываем JSON
+  function processJsonData($data, &$knowledge, $prefix = 'imported', &$count) {
+    foreach ($data as $key => $value) {
+      if (is_array($value)) {
+        if (isset($value[0]) && is_string($value[0])) {
+          // Массив строк
+          $knowledge[$prefix][$key] = $value;
+          $count += count($value);
+        } else {
+          // Вложенный объект
+          processJsonData($value, $knowledge, $prefix . '_' . $key, $count);
+        }
+      } else {
+        // Простое значение
+        $knowledge[$prefix][$key] = $value;
+        $count++;
+      }
+    }
+  }
+
+  processJsonData($data, $knowledge, 'imported', $processedCount);
+
+  file_put_contents($aiKnowledgeFile, json_encode($knowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+  updateStats('knowledge_updates');
+
+  return $processedCount;
+}
+
+function processCsvFileImproved($content) {
+  global $aiTrainingFile, $aiKnowledgeFile;
+
+  $lines = str_getcsv($content, "\n");
+  $training = json_decode(@file_get_contents($aiTrainingFile), true) ?: ['conversations' => [], 'user_feedback' => [], 'learning_patterns' => [], 'context_memory' => []];
+  $knowledge = json_decode(@file_get_contents($aiKnowledgeFile), true) ?: [];
+
+  if (!isset($knowledge['csv_import'])) {
+    $knowledge['csv_import'] = [];
+  }
+
+  $processedCount = 0;
+  $headers = null;
+
+  foreach ($lines as $index => $line) {
+    $data = str_getcsv($line);
+
+    if ($index === 0 && (in_array('вопрос', array_map('mb_strtolower', $data)) || in_array('question', array_map('mb_strtolower', $data)))) {
+      // Первая строка - заголовки
+      $headers = array_map('mb_strtolower', $data);
+      continue;
+    }
+
+    if (count($data) >= 2) {
+      $question = trim($data[0]);
+      $answer = trim($data[1]);
+      $rating = isset($data[2]) ? (int)$data[2] : 5;
+
+      if ($question && $answer) {
+        // Добавляем в базу знаний
+        $key = mb_strtolower(str_replace(['?', '!', '.'], '', $question));
+        $knowledge['csv_import'][$key] = $answer;
+
+        // Добавляем в тренировочные данные
+        addToTraining($training, $question, $answer, 'csv_import', $rating);
+        $processedCount++;
+      }
+    }
+  }
+
+  file_put_contents($aiKnowledgeFile, json_encode($knowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+  file_put_contents($aiTrainingFile, json_encode($training, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+  updateStats('knowledge_updates');
+
+  return $processedCount;
+}
+
+function processBulkText($text) {
+  global $aiKnowledgeFile, $aiTrainingFile;
+
+  $knowledge = json_decode(@file_get_contents($aiKnowledgeFile), true) ?: [];
+  $training = json_decode(@file_get_contents($aiTrainingFile), true) ?: ['conversations' => [], 'user_feedback' => [], 'learning_patterns' => [], 'context_memory' => []];
+
+  if (!isset($knowledge['bulk_add'])) {
+    $knowledge['bulk_add'] = [];
+  }
+
+  // Разбиваем на блоки по пустым строкам
+  $blocks = preg_split('/\n\s*\n/', $text);
+  $processedCount = 0;
+
+  foreach ($blocks as $block) {
+    $lines = array_filter(array_map('trim', explode("\n", $block)));
+
+    if (count($lines) >= 2) {
+      // Первая строка - вопрос, остальные - ответ
+      $question = array_shift($lines);
+      $answer = implode(' ', $lines);
+
+      $key = mb_strtolower(str_replace(['?', '!', '.'], '', $question));
+      $knowledge['bulk_add'][$key] = $answer;
+
+      addToTraining($training, $question, $answer, 'bulk_add');
+      $processedCount++;
+
+    } elseif (count($lines) === 1 && mb_strlen($lines[0]) > 10) {
+      // Одна строка - добавляем как факт
+      $knowledge['bulk_add'][] = $lines[0];
+      $processedCount++;
+    }
+  }
+
+  file_put_contents($aiKnowledgeFile, json_encode($knowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+  file_put_contents($aiTrainingFile, json_encode($training, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+  updateStats('knowledge_updates');
+
+  return $processedCount;
+}
+
+function addToTraining(&$training, $question, $answer, $source, $rating = 5) {
+  $training['conversations'][] = [
+    'timestamp' => date('Y-m-d H:i:s'),
+    'user_message' => $question,
+    'ai_response' => $answer,
+    'feedback' => $rating,
+    'context' => [$source],
+    'source' => $source
+  ];
+
+  // Добавляем паттерны
+  $keywords = extractKeywordsFromText($question);
+  foreach($keywords as $keyword) {
+    if (!isset($training['learning_patterns'][$keyword])) {
+      $training['learning_patterns'][$keyword] = [];
+    }
+    $training['learning_patterns'][$keyword][] = $answer;
+  }
+}
+
+function extractKeywordsFromText($text) {
+  $text = mb_strtolower($text);
+  $keywords = [];
+
+  // Ключевые слова для типографии
+  $patterns = [
+    'цена|стоимость|сколько|цену|тариф|прайс' => 'price',
+    'время|срок|быстро|долго|когда|готово' => 'time',
+    'доставка|привезти|курьер|доставить' => 'delivery',
+    'файл|формат|макет|pdf|jpg|требования' => 'files',
+    'визитки|визитка|карточки' => 'cards',
+    'баннер|баннеры|растяжка' => 'banner',
+    'фото|фотография|снимок|документы' => 'photo',
+    'печать|распечатка|печатать' => 'printing',
+    'штамп|печать|штампы' => 'stamp',
+    'листовки|листовка|флаеры' => 'flyers',
+    'качество|хорошо|плохо|отлично' => 'quality',
+    'размер|формат|габариты' => 'size',
+    'материал|бумага|пленка' => 'material'
+  ];
+
+  foreach($patterns as $pattern => $keyword) {
+    if (preg_match("/($pattern)/ui", $text)) {
+      $keywords[] = $keyword;
+    }
+  }
+
+  return array_unique($keywords);
+}
+
+function updateStats($field) {
+  global $aiStatsFile;
+
+  $stats = json_decode(@file_get_contents($aiStatsFile), true) ?: [
+    'total_conversations' => 0,
+    'successful_responses' => 0,
+    'learning_events' => 0,
+    'user_satisfaction' => 0,
+    'knowledge_updates' => 0
+  ];
+
+  if (isset($stats[$field])) {
+    $stats[$field]++;
+  }
+
+  file_put_contents($aiStatsFile, json_encode($stats, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+}
+
+function showLoginForm($error = '') {
+  echo '<!doctype html><html><head><meta charset="utf-8"><title>AI Admin Login</title><style>body{font-family:system-ui;background:#0f1115;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.login-card{background:#1a1f2b;padding:30px;border-radius:12px;width:300px;text-align:center}.error{color:#ff7a7a;margin-bottom:15px}input{width:100%;padding:12px;border:1px solid #333;background:#252a38;color:#fff;border-radius:6px;margin-bottom:15px}button{width:100%;padding:12px;background:#FF8A00;border:none;border-radius:6px;color:#000;font-weight:600;cursor:pointer}</style></head><body><div class="login-card"><h2>🤖 AI Admin Panel</h2>';
+  if ($error) echo '<div class="error">'.$error.'</div>';
+  echo '<form method="post"><input type="password" name="password" placeholder="Пароль администратора" required><button name="ai_admin_login">Войти в AI админку</button></form></div></body></html>';
+}
+
+// Загружаем данные
+$knowledge = json_decode(@file_get_contents($aiKnowledgeFile), true) ?: [];
+$training = json_decode(@file_get_contents($aiTrainingFile), true) ?: ['conversations' => [], 'user_feedback' => [], 'learning_patterns' => [], 'context_memory' => []];
+$context = json_decode(@file_get_contents($aiContextFile), true) ?: [];
+$stats = json_decode(@file_get_contents($aiStatsFile), true) ?: ['total_conversations' => 0, 'successful_responses' => 0, 'learning_events' => 0, 'user_satisfaction' => 0, 'knowledge_updates' => 0];
+
+// Читаем логи чата
+$chatLines = @file($chatLog, FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES) ?: [];
+$recentChats = [];
+foreach (array_reverse(array_slice($chatLines, -50)) as $line) {
+  if (preg_match('~^$$(.+?)$$\s*(.+)$~u', $line, $m)) {
+    $data = json_decode($m[2], true);
+    if ($data && isset($data['type']) && $data['type'] === 'ai_chat') {
+      $recentChats[] = ['time' => $m[1], 'data' => $data];
+    }
+  }
+}
+?>
+<!doctype html>
+<html lang='ru'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <title>🤖 AI Admin Panel - Улучшенное управление ИИ</title>
+  <style>
+    :root{--bg:#0f1115;--panel:#1a1f2b;--panel2:#252a38;--muted:#8a92a5;--brand:#FFD700;--accent:#2D5BFF;--ok:#4ade80;--bad:#f87171;--text:#e9eef7;--border:rgba(255,255,255,.08)}
+    *{box-sizing:border-box}
+    html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6}
+    .wrap{max-width:1600px;margin:0 auto;padding:20px}
+    .header{background:linear-gradient(135deg,#FF8A00,#FFB14D);color:#000;padding:20px;border-radius:12px;margin-bottom:20px;text-align:center;position:relative;overflow:hidden}
+    .header::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle,rgba(255,255,255,.1) 0%,transparent 50%);animation:shimmer 6s ease-in-out infinite}
+    @keyframes shimmer{0%,100%{transform:rotate(0deg)}50%{transform:rotate(180deg)}}
+    .header h1{margin:0;font-size:32px;font-weight:900;position:relative;z-index:2}
+    .header p{margin:8px 0 0;opacity:0.9;position:relative;z-index:2;font-weight:600}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all 0.3s}
+    .card:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.2)}
+    .card-header{padding:16px 20px;border-bottom:1px solid var(--border);font-weight:700;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,rgba(255,215,0,.1),rgba(45,91,255,.1))}
+    .card-body{padding:20px}
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+    .stat-item{background:var(--panel2);padding:16px;border-radius:8px;text-align:center;border:1px solid var(--border)}
+    .stat-number{font-size:28px;font-weight:900;color:var(--brand);text-shadow:0 2px 4px rgba(0,0,0,.3)}
+    .stat-label{font-size:12px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:0.5px}
+    .btn{background:linear-gradient(135deg,var(--brand),#FFA500);border:none;color:#000;padding:12px 20px;border-radius:8px;cursor:pointer;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;border:2px solid transparent}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(255,215,0,0.4);border-color:rgba(255,255,255,.3)}
+    .btn-accent{background:linear-gradient(135deg,var(--accent),#0066ff);color:#fff}
+    .btn-accent:hover{box-shadow:0 6px 20px rgba(45,91,255,0.4)}
+    .btn-danger{background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff}
+    .btn-danger:hover{box-shadow:0 6px 20px rgba(220,38,38,0.4)}
+    .btn-success{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff}
+    .btn-success:hover{box-shadow:0 6px 20px rgba(22,163,74,0.4)}
+    .form-group{margin-bottom:16px}
+    .form-group label{display:block;margin-bottom:6px;font-weight:600;color:var(--brand)}
+    input,textarea,select{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:12px;border-radius:6px;font-size:14px;transition:all 0.2s}
+    input:focus,textarea:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(255,215,0,0.1);outline:none}
+    textarea{min-height:120px;resize:vertical;font-family:Monaco,monospace;font-size:13px}
+    .upload-area{border:3px dashed var(--border);border-radius:12px;padding:40px;text-align:center;margin:12px 0;transition:all 0.3s;background:linear-gradient(135deg,rgba(255,215,0,.02),rgba(45,91,255,.02));cursor:pointer;position:relative;overflow:hidden}
+    .upload-area::before{content:'📁';position:absolute;top:20px;right:20px;font-size:24px;opacity:0.3}
+    .upload-area:hover{border-color:var(--brand);background:linear-gradient(135deg,rgba(255,215,0,.05),rgba(45,91,255,.05));transform:translateY(-2px)}
+    .upload-area.dragover{border-color:var(--accent);background:rgba(45,91,255,.1);transform:scale(1.02)}
+    .upload-area input[type=file]{display:none}
+    .upload-icon{font-size:48px;margin-bottom:12px;opacity:0.7}
+    .upload-text{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--brand)}
+    .upload-hint{font-size:14px;opacity:0.8;line-height:1.4}
+    .chat-log{max-height:400px;overflow-y:auto;background:var(--panel2);border-radius:8px;padding:12px;border:1px solid var(--border)}
+    .chat-item{margin:8px 0;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,0.03);border-left:3px solid var(--brand)}
+    .chat-user{color:#60a5fa;font-weight:600;margin-bottom:4px}
+    .chat-ai{color:#fbbf24;margin-bottom:4px}
+    .chat-time{font-size:11px;color:var(--muted)}
+    .knowledge-editor{font-family:Monaco,monospace;font-size:13px;height:350px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;line-height:1.4}
+    .alert{padding:14px 18px;border-radius:8px;margin-bottom:16px;border-left:4px solid;font-weight:500}
+    .alert-success{background:rgba(74,222,128,0.1);color:var(--ok);border-left-color:var(--ok)}
+    .alert-info{background:rgba(45,91,255,0.1);color:var(--accent);border-left-color:var(--accent)}
+    .alert-warning{background:rgba(245,158,11,0.1);color:#f59e0b;border-left-color:#f59e0b}
+    .progress-bar{width:100%;height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin:8px 0}
+    .progress-fill{height:100%;background:linear-gradient(90deg,var(--brand),#FFA500);transition:width 0.3s}
+    .mini{font-size:11px;color:var(--muted)}
+    .mt-1{margin-top:8px}.mb-1{margin-bottom:8px}.text-center{text-align:center}
+    .knowledge-preview{max-height:200px;overflow-y:auto;background:var(--panel2);padding:12px;border-radius:6px;font-size:12px;line-height:1.4;border:1px solid var(--border)}
+    .knowledge-item{margin:4px 0;padding:6px 8px;background:rgba(255,215,0,0.1);border-radius:4px;border-left:2px solid var(--brand)}
+    .quick-examples{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+    .example-btn{background:var(--panel2);border:1px solid var(--border);padding:10px;border-radius:6px;cursor:pointer;transition:all 0.2s;font-size:13px;text-align:left}
+    .example-btn:hover{background:rgba(255,215,0,0.1);border-color:var(--brand)}
+    .tab-container{margin-bottom:20px}
+    .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;background:var(--panel2);border-radius:8px 8px 0 0;overflow:hidden}
+    .tab{padding:14px 24px;cursor:pointer;border-bottom:3px solid transparent;transition:all 0.2s;font-weight:600;background:rgba(255,255,255,.02)}
+    .tab.active{border-bottom-color:var(--brand);color:var(--brand);background:rgba(255,215,0,.1)}
+    .tab:hover{background:rgba(255,215,0,0.05)}
+    .tab-content{display:none;background:var(--panel2);padding:20px;border-radius:0 0 8px 8px}
+    .tab-content.active{display:block}
+  </style>
+</head>
+<body>
+  <div class='wrap'>
+    <div class='header'>
+      <h1>🤖 AI Admin Panel v2.1</h1>
+      <p>Улучшенное управление искусственным интеллектом • Простая загрузка знаний • Мощная аналитика</p>
+    </div>
+
+    <?php if (isset($_GET['upload_result'])): ?>
+      <div class='alert alert-success'>✅ <?=htmlspecialchars($_GET['upload_result'])?></div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['quick_added'])): ?>
+      <div class='alert alert-success'>✅ Знание добавлено и ИИ обучен!</div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['bulk_result'])): ?>
+      <div class='alert alert-success'>✅ <?=htmlspecialchars($_GET['bulk_result'])?></div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['updated'])): ?>
+      <div class='alert alert-success'>✅ База знаний обновлена!</div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['reset'])): ?>
+      <div class='alert alert-info'>🔄 Данные обучения сброшены. ИИ начинает обучение заново.</div>
+    <?php endif; ?>
+
+    <!-- Статистика ИИ -->
+    <div class='card' style='margin-bottom:20px'>
+      <div class='card-header'>
+        📊 Статистика и производительность ИИ
+        <span class='mini'>Обновлено: <?=date('Y-m-d H:i:s')?></span>
+      </div>
+      <div class='card-body'>
+        <div class='stats-grid'>
+          <div class='stat-item'>
+            <div class='stat-number'><?=number_format($stats['total_conversations'])?></div>
+            <div class='stat-label'>Всего диалогов</div>
+          </div>
+          <div class='stat-item'>
+            <div class='stat-number'><?=count($training['learning_patterns'])?></div>
+            <div class='stat-label'>Выученных паттернов</div>
+          </div>
+          <div class='stat-item'>
+            <div class='stat-number'><?=count($knowledge)?></div>
+            <div class='stat-label'>Разделов знаний</div>
+          </div>
+          <div class='stat-item'>
+            <div class='stat-number'><?=$stats['learning_events']?></div>
+            <div class='stat-label'>События обучения</div>
+          </div>
+          <div class='stat-item'>
+            <div class='stat-number'><?=count($training['conversations'])?></div>
+            <div class='stat-label'>Записи тренировок</div>
+          </div>
+          <div class='stat-item'>
+            <div class='stat-number'><?=count($recentChats)?></div>
+            <div class='stat-label'>Последние чаты</div>
+          </div>
+        </div>
+
+        <!-- Прогресс обучения -->
+        <div class='mb-1'><strong>Прогресс обучения:</strong></div>
+        <div class='progress-bar'>
+          <div class='progress-fill' style='width:<?=min(100, ($stats['total_conversations'] / 100) * 100)?>%'></div>
+        </div>
+        <div class='mini mt-1'>ИИ освоил <?=min(100, intval(($stats['total_conversations'] / 100) * 100))?>% от базового уровня • Готов к продвинутым диалогам</div>
+      </div>
+    </div>
+
+    <div class='tab-container'>
+      <div class='tabs'>
+        <div class='tab active' onclick='switchTab("upload")'>📁 Загрузка файлов</div>
+        <div class='tab' onclick='switchTab("quick")'>⚡ Быстрое добавление</div>
+        <div class='tab' onclick='switchTab("bulk")'>📝 Массовый ввод</div>
+        <div class='tab' onclick='switchTab("editor")'>🔧 Редактор знаний</div>
+        <div class='tab' onclick='switchTab("analytics")'>📈 Аналитика</div>
+      </div>
+
+      <!-- Вкладка загрузки файлов -->
+      <div class='tab-content active' id='upload'>
+        <div class='grid'>
+          <div class='card'>
+            <div class='card-header'>
+              📚 Загрузка файлов знаний
+              <span style='background:var(--ok);color:#000;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700'>УЛУЧШЕНО</span>
+            </div>
+            <div class='card-body'>
+              <form method='post' enctype='multipart/form-data' id='uploadForm'>
+                <div class='upload-area' id='uploadArea'>
+                  <input type='file' id='trainingFile' name='training_file' accept='.txt,.json,.csv,.md'>
+                  <div class='upload-icon'>🧠</div>
+                  <div class='upload-text'>Загрузить файл знаний</div>
+                  <div class='upload-hint'>
+                    Перетащите файл сюда или нажмите для выбора<br>
+                    <strong>Поддержка:</strong> TXT, CSV, JSON, MD<br>
+                    <strong>Кодировка:</strong> UTF-8, Windows-1251
+                  </div>
+                </div>
+
+                <button type='submit' name='upload_training_file' class='btn btn-success' style='width:100%;margin-top:12px'>
+                  🚀 Загрузить и обучить ИИ
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class='card'>
+            <div class='card-header'>💡 Примеры форматов файлов</div>
+            <div class='card-body'>
+              <div class='alert alert-info'>
+                <strong>📄 Текстовые файлы (TXT, MD):</strong><br>
+                • <code>Вопрос: Ответ</code><br>
+                • <code>Q: Вопрос<br>A: Ответ</code><br>
+                • <code>- Вопрос<br>- Ответ</code><br><br>
+
+                <strong>📊 CSV файлы:</strong><br>
+                • <code>вопрос,ответ,оценка</code><br>
+                • <code>Сколько стоят визитки?,От 900 рублей,5</code><br><br>
+
+                <strong>📋 JSON файлы:</strong><br>
+                • Любая структура JSON будет обработана автоматически
+              </div>
+
+              <div class='knowledge-preview'>
+                <strong>🎯 Готовые темы для загрузки:</strong><br>
+                <div class='knowledge-item'>💰 Цены и тарифы</div>
+                <div class='knowledge-item'>⏰ Сроки изготовления</div>
+                <div class='knowledge-item'>🛠️ Технические требования</div>
+                <div class='knowledge-item'>🚚 Доставка и самовывоз</div>
+                <div class='knowledge-item'>📞 Контакты и режим работы</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Вкладка быстрого добавления -->
+      <div class='tab-content' id='quick'>
+        <div class='grid'>
+          <div class='card'>
+            <div class='card-header'>⚡ Быстрое добавление знаний</div>
+            <div class='card-body'>
+              <form method='post'>
+                <div class='form-group'>
+                  <label>🤔 Вопрос клиента:</label>
+                  <input type='text' name='question' placeholder='Например: Сколько стоят визитки?' required>
+                </div>
+
+                <div class='form-group'>
+                  <label>🤖 Ответ ИИ:</label>
+                  <textarea name='answer' placeholder='Визитки от 900 рублей за 100 штук на мелованной бумаге. Готовы за 1 день.' required></textarea>
+                </div>
+
+                <div class='form-group'>
+                  <label>📂 Категория:</label>
+                  <select name='category'>
+                    <option value='prices'>💰 Цены</option>
+                    <option value='services'>🛠️ Услуги</option>
+                    <option value='timeframes'>⏰ Сроки</option>
+                    <option value='technical'>🔧 Техтребования</option>
+                    <option value='delivery'>🚚 Доставка</option>
+                    <option value='custom'>📝 Прочее</option>
+                  </select>
+                </div>
+
+                <button type='submit' name='quick_add_knowledge' class='btn btn-accent' style='width:100%'>
+                  ⚡ Добавить и обучить ИИ
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class='card'>
+            <div class='card-header'>🎯 Быстрые шаблоны</div>
+            <div class='card-body'>
+              <div class='quick-examples'>
+                <div class='example-btn' onclick='fillQuickForm("Сколько стоит печать баннера?", "Баннеры от 1100 рублей. ПВХ 440 г/м², люверсы в комплекте. Срочное изготовление 2-4 часа.")'>
+                  💰 Цена баннера
+                </div>
+                <div class='example-btn' onclick='fillQuickForm("Какие файлы принимаете?", "Принимаем PDF, JPG, PNG, AI, PSD, CDR, EPS. Рекомендуем PDF в CMYK, 300 dpi с вылетами 2-3 мм.")'>
+                  📁 Форматы файлов
+                </div>
+                <div class='example-btn' onclick='fillQuickForm("Есть ли доставка?", "Да, доставляем по Сосновому Бору. В центре города бесплатно, на окраины 150-300₽.")'>
+                  🚚 Доставка
+                </div>
+                <div class='example-btn' onclick='fillQuickForm("Режим работы?", "Понедельник-пятница 10:00-20:00, суббота-воскресенье 11:00-18:00. Адрес: Красных Фортов, 49.")'>
+                  🕐 Режим работы
+                </div>
+              </div>
+
+              <div class='alert alert-warning'>
+                <strong>💡 Совет:</strong> Добавляйте вопросы в том виде, как их задают клиенты. ИИ лучше понимает естественную речь.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Вкладка массового ввода -->
+      <div class='tab-content' id='bulk'>
+        <div class='card'>
+          <div class='card-header'>📝 Массовый ввод знаний</div>
+          <div class='card-body'>
+            <form method='post'>
+              <div class='form-group'>
+                <label>📋 Введите вопросы и ответы (разделяйте пустой строкой):</label>
+                <textarea name='bulk_text' style='height:300px' placeholder='Пример:
+
+Сколько стоят визитки?
+Визитки от 900 рублей за 100 штук на мелованной бумаге 300 г/м². Готовы за 1 день.
+
+Какие сроки печати баннеров?
+Баннеры изготавливаем за 2-4 часа. Срочные заказы принимаем до 16:00.
+
+Принимаете ли оплату картой?
+Да, принимаем оплату наличными и банковской картой. Также работаем по безналичному расчету.'></textarea>
+              </div>
+
+              <div class='alert alert-info'>
+                <strong>📖 Формат ввода:</strong><br>
+                • Каждый блок - отдельное знание<br>
+                • Первая строка блока - вопрос<br>
+                • Остальные строки - ответ<br>
+                • Разделяйте блоки пустой строкой
+              </div>
+
+              <button type='submit' name='bulk_add_knowledge' class='btn btn-success' style='width:100%'>
+                📚 Обработать и добавить все знания
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Вкладка редактора -->
+      <div class='tab-content' id='editor'>
+        <div class='card'>
+          <div class='card-header'>
+            🔧 Расширенный редактор базы знаний
+            <button onclick='exportKnowledge()' class='btn' style='padding:6px 12px;font-size:12px'>💾 Экспорт JSON</button>
+          </div>
+          <div class='card-body'>
+            <form method='post'>
+              <textarea name='knowledge_data' class='knowledge-editor' placeholder='Редактируйте JSON базы знаний...'><?=json_encode($knowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT)?></textarea>
+              <div class='form-group' style='margin-top:12px'>
+                <button type='submit' name='update_knowledge' class='btn btn-accent'>
+                  💾 Сохранить изменения в базе знаний
+                </button>
+              </div>
+            </form>
+
+            <div class='alert alert-info' style='margin-top:12px'>
+              <strong>🎯 Структура JSON:</strong><br>
+              • <code>greetings</code> - приветствия<br>
+              • <code>services</code> - описания услуг<br>
+              • <code>prices</code> - цены<br>
+              • <code>technical_specs</code> - техтребования<br>
+              • <code>help</code> - помощь и советы<br>
+              • <code>imported_*</code> - импортированные данные
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Вкладка аналитики -->
+      <div class='tab-content' id='analytics'>
+        <div class='grid'>
+          <div class='card'>
+            <div class='card-header'>📈 Эффективность ИИ</div>
+            <div class='card-body'>
+              <?php
+              $recentTraining = array_slice($training['conversations'], -30);
+              $avgFeedback = 0;
+              $totalFeedback = 0;
+              foreach ($recentTraining as $conv) {
+                if (isset($conv['feedback']) && $conv['feedback'] > 0) {
+                  $avgFeedback += $conv['feedback'];
+                  $totalFeedback++;
+                }
+              }
+              $avgRating = $totalFeedback > 0 ? round($avgFeedback / $totalFeedback, 1) : 0;
+              ?>
+
+              <div class='stat-item' style='margin-bottom:20px'>
+                <div class='stat-number'><?=$avgRating?>/5</div>
+                <div class='stat-label'>Средняя оценка (30 диалогов)</div>
+              </div>
+
+              <div class='progress-bar'>
+                <div class='progress-fill' style='width:<?=($avgRating/5)*100?>%'></div>
+              </div>
+
+              <div class='mini mt-1'>
+                Качество ответов: <?=$avgRating >= 4 ? '🟢 Отлично' : ($avgRating >= 3 ? '🟡 Хорошо' : '🔴 Требует улучшения')?>
+              </div>
+
+              <div style='margin-top:20px'>
+                <strong>📊 Источники обучения:</strong>
+                <div class='knowledge-preview'>
+                  <?php
+                  $sources = [];
+                  foreach($training['conversations'] as $conv) {
+                    $source = $conv['source'] ?? 'unknown';
+                    $sources[$source] = ($sources[$source] ?? 0) + 1;
+                  }
+                  foreach($sources as $source => $count):
+                  ?>
+                    <div class='knowledge-item'>
+                      <?=$source?>: <?=$count?> записей
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class='card'>
+            <div class='card-header'>💬 Последние диалоги ИИ</div>
+            <div class='card-body'>
+              <div class='chat-log'>
+                <?php if (empty($recentChats)): ?>
+                  <div class='text-center muted'>Диалогов пока нет</div>
+                <?php else: ?>
+                  <?php foreach (array_slice($recentChats, -15) as $chat): ?>
+                    <div class='chat-item'>
+                      <div class='chat-time'><?=$chat['time']?></div>
+                      <div class='chat-user'>👤 <?=htmlspecialchars($chat['data']['user_message'])?></div>
+                      <div class='chat-ai'>🤖 <?=htmlspecialchars(mb_substr($chat['data']['ai_response'], 0, 200))?><?=mb_strlen($chat['data']['ai_response']) > 200 ? '...' : ''?></div>
+                    </div>
+                  <?php endforeach; ?>
+                <?php endif; ?>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Управление обучением -->
+    <div class='grid' style='margin-top:20px'>
+      <div class='card'>
+        <div class='card-header'>⚙️ Управление обучением</div>
+        <div class='card-body'>
+          <div class='form-group'>
+            <strong>🧠 Выученные паттерны:</strong>
+            <div class='knowledge-preview'>
+              <?php foreach (array_slice($training['learning_patterns'], 0, 15, true) as $pattern => $responses): ?>
+                <div class='knowledge-item'>
+                  <strong><?=htmlspecialchars($pattern)?>:</strong> <?=count($responses)?> ответов
+                </div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+
+          <form method='post' onsubmit='return confirm("Точно сбросить все данные обучения? Это действие необратимо!")'>
+            <button type='submit' name='reset_training' class='btn btn-danger'>
+              🗑️ Полный сброс обучения ИИ
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class='card'>
+        <div class='card-header'>🎯 База знаний</div>
+        <div class='card-body'>
+          <div class='knowledge-preview'>
+            <strong>📚 Разделы знаний (<?=count($knowledge)?>):</strong><br>
+            <?php foreach($knowledge as $section => $data): ?>
+              <div class='knowledge-item'>
+                <?=htmlspecialchars($section)?>: <?=is_array($data) ? count($data) : 1?> записей
+              </div>
+            <?php endforeach; ?>
+          </div>
+
+          <div style='margin-top:16px'>
+            <a href='index.php' class='btn btn-accent'>← Вернуться на сайт</a>
+            <button onclick='location.reload()' class='btn'>🔄 Обновить данные</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style='margin-top:30px;text-align:center;padding:20px;background:var(--panel);border-radius:8px;border:1px solid var(--border)'>
+      <strong>🤖 AI Admin Panel v2.1 - Улучшенная версия</strong><br>
+      <span class='mini'>Умная загрузка • Автоопределение кодировки • Множественные форматы • Продвинутая аналитика</span>
+    </div>
+  </div>
+
+  <script>
+    // Переключение вкладок
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      event.target.classList.add('active');
+      document.getElementById(tabName).classList.add('active');
+    }
+
+    // Заполнение быстрой формы
+    function fillQuickForm(question, answer) {
+      document.querySelector('input[name="question"]').value = question;
+      document.querySelector('textarea[name="answer"]').value = answer;
+
+      // Переключаемся на вкладку быстрого добавления
+      switchTab('quick');
+      document.querySelectorAll('.tab')[1].classList.add('active');
+    }
+
+    // Экспорт базы знаний
+    function exportKnowledge() {
+      const knowledge = document.querySelector('.knowledge-editor').value;
+      const blob = new Blob([knowledge], {type: 'application/json;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ai_knowledge_backup_' + new Date().toISOString().split('T')[0] + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // Drag & Drop для загрузки файлов
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('trainingFile');
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      uploadArea.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      uploadArea.addEventListener(eventName, () => {
+        uploadArea.classList.add('dragover');
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      uploadArea.addEventListener(eventName, () => {
+        uploadArea.classList.remove('dragover');
+      }, false);
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        fileInput.files = files;
+        updateFileInfo(files[0]);
+      }
+    }, false);
+
+    uploadArea.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        updateFileInfo(e.target.files[0]);
+      }
+    });
+
+    function updateFileInfo(file) {
+      const uploadText = uploadArea.querySelector('.upload-text');
+      const uploadHint = uploadArea.querySelector('.upload-hint');
+
+      uploadText.textContent = `📁 ${file.name}`;
+      uploadHint.innerHTML = `Размер: ${(file.size / 1024).toFixed(1)} KB<br>Готов к загрузке!`;
+
+      uploadArea.style.borderColor = 'var(--ok)';
+      uploadArea.style.background = 'linear-gradient(135deg,rgba(74,222,128,.05),rgba(45,91,255,.05))';
+    }
+
+    // Автосохранение при редактировании
+    let saveTimeout;
+    document.querySelector('.knowledge-editor')?.addEventListener('input', function() {
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => {
+        localStorage.setItem('ai_knowledge_draft', this.value);
+        console.log('Черновик сохранен');
+      }, 2000);
+    });
+
+    // Восстановление черновика
+    window.addEventListener('load', function() {
+      const draft = localStorage.getItem('ai_knowledge_draft');
+      const editor = document.querySelector('.knowledge-editor');
+      if (draft && editor && !editor.value.trim()) {
+        if (confirm('Найден сохраненный черновик. Восстановить?')) {
+          editor.value = draft;
+        }
+      }
+    });
+
+    // Автообновление статистики каждые 30 секунд
+    setInterval(() => {
+      if (document.getElementById('analytics').classList.contains('active')) {
+        location.reload();
+      }
+    }, 30000);
+  </script>
+</body>
+</html>
