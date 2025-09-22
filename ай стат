@@ -1,0 +1,31 @@
+{
+    "company_info": {
+        "name": "Копировальный фотоцентр ПРИНТСС",
+        "location": "Сосновый Бор, ул. Красных Фортов, 49",
+        "specialization": "печать, фотоцентр, типография",
+        "key_features": [
+            "быстро",
+            "качественно",
+            "рядом с OZON и Саша Суши"
+        ]
+    },
+    "site_structure": {
+        "main_sections": [
+            "catalog",
+            "calc",
+            "services",
+            "reviews",
+            "contacts"
+        ],
+        "key_pages": [
+            "photoconstructor.php",
+            "produkt.php",
+            "banner_calculator.html"
+        ],
+        "special_features": [
+            "игра на скидку",
+            "онлайн калькулятор",
+            "доставка"
+        ]
+    }
+}
