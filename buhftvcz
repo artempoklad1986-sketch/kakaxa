@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактор фото на документы</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .editor-wrapper {
+            padding: 30px;
+        }
+
+        /* Панель настройки сервиса */
+        .api-settings {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            border: 1px solid #229954;
+        }
+
+        .api-settings h4 {
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .api-input-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .api-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            padding: 8px 15px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            flex: 1;
+        }
+
+        .api-status.valid {
+            background: rgba(39, 174, 96, 0.8);
+        }
+
+        .api-status.invalid {
+            background: rgba(231, 76, 60, 0.8);
+        }
+
+        .test-api-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .test-api-btn:hover {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.5);
+        }
+
+        .test-api-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .service-info {
+            margin-top: 15px;
+        }
+
+        .service-info h5 {
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .service-info ol {
+            margin: 10px 0;
+            padding-left: 20px;
+            color: rgba(255,255,255,0.9);
+        }
+
+        .service-info p {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+
+        /* Панель загрузки */
+        .upload-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .upload-area {
+            border: 3px dashed #3498db;
+            border-radius: 15px;
+            padding: 60px 30px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .upload-area:hover {
+            border-color: #2980b9;
+            background: #e8f4fd;
+            transform: translateY(-2px);
+        }
+
+        .upload-area.dragover {
+            border-color: #27ae60;
+            background: #d5f4e6;
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            color: #3498db;
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 15px 35px;
+            border-radius: 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(52, 152, 219, 0.4);
+        }
+
+        /* Панель инструментов */
+        .toolbar {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        }
+
+        .toolbar-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .tool-group {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        .tool-group h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .format-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .format-btn {
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .format-btn.active {
+            border-color: #3498db;
+            background: #e8f4fd;
+            color: #2980b9;
+            transform: scale(1.02);
+        }
+
+        .background-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .bg-btn {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #dee2e6;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bg-btn.active {
+            border-color: #3498db;
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+
+        .bg-btn[data-color="white"] { background: linear-gradient(135deg, #ffffff, #f8f9fa); }
+        .bg-btn[data-color="blue"] { background: linear-gradient(135deg, #4A90E2, #357ABD); }
+        .bg-btn[data-color="red"] { background: linear-gradient(135deg, #E74C3C, #C0392B); }
+        .bg-btn[data-color="gray"] { background: linear-gradient(135deg, #95A5A6, #7F8C8D); }
+
+        .slider-container {
+            margin: 10px 0;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 5px;
+            background: #dee2e6;
+            outline: none;
+            appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .tool-btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 20px;
+            border: 2px solid #3498db;
+            background: white;
+            color: #3498db;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
+        }
+
+        .tool-btn:hover:not(:disabled) {
+            background: #3498db;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .tool-btn:disabled {
+            background: #ecf0f1;
+            color: #95a5a6;
+            border-color: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .tool-btn.danger {
+            border-color: #e74c3c;
+            color: #e74c3c;
+        }
+
+        .tool-btn.danger:hover:not(:disabled) {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .tool-btn.success {
+            border-color: #27ae60;
+            color: #27ae60;
+        }
+
+        .tool-btn.success:hover:not(:disabled) {
+            background: #27ae60;
+            color: white;
+        }
+
+        .tool-btn.premium {
+            border-color: #f39c12;
+            color: #f39c12;
+            position: relative;
+        }
+
+        .tool-btn.premium:hover:not(:disabled) {
+            background: #f39c12;
+            color: white;
+        }
+
+        .tool-btn.premium::after {
+            content: "✨";
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            font-size: 12px;
+        }
+
+        /* Индикатор загрузки в кнопке */
+        .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top: 2px solid currentColor;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Рабочая область */
+        .workspace {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            align-items: start;
+        }
+
+        .canvas-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        }
+
+        .canvas-container {
+            position: relative;
+            text-align: center;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #mainCanvas {
+            max-width: 100%;
+            max-height: 600px;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            cursor: crosshair;
+        }
+
+        /* Предварительный просмотр */
+        .preview-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+            position: sticky;
+            top: 20px;
+        }
+
+        .preview-section h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .preview-container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            border: 2px dashed #dee2e6;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        #previewCanvas {
+            border-radius: 5px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+
+        .preview-info {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .preview-info p {
+            margin: 5px 0;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .sheet-preview {
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        #sheetCanvas {
+            max-width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .download-section {
+            text-align: center;
+        }
+
+        .download-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #27ae60, #219a52);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 15px;
+            box-shadow: 0 8px 25px rgba(39, 174, 96, 0.3);
+        }
+
+        .download-btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(39, 174, 96, 0.4);
+        }
+
+        .download-btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .download-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .option-group {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .option-group label {
+            display: block;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+        }
+
+        .option-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+
+        .checkbox-option input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #3498db;
+        }
+
+        /* Статус и уведомления */
+        .status-bar {
+            background: #f8f9fa;
+            padding: 15px 25px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            color: #6c757d;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #27ae60;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            max-width: 350px;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.error {
+            background: #e74c3c;
+        }
+
+        .notification.info {
+            background: #3498db;
+        }
+
+        .notification.warning {
+            background: #f39c12;
+        }
+
+        /* Адаптивность */
+        @media (max-width: 1200px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .preview-section {
+                position: static;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .toolbar-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .format-grid,
+            .background-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .tool-btn {
+                min-width: auto;
+            }
+
+            .api-input-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            header h1 {
+                font-size: 2rem;
+            }
+
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+
+            .editor-wrapper {
+                padding: 20px;
+            }
+        }
+
+        /* Анимации */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .editor-main {
+            animation: fadeInUp 0.6s ease;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .fade-in {
+            animation: fadeInUp 0.5s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🖼️ Редактор фото на документы</h1>
+            <p>Профессиональная обработка фотографий с AI удалением фона</p>
+        </header>
+
+        <div class="editor-wrapper">
+            <!-- Настройки сервиса удаления фона -->
+            <div class="api-settings">
+                <h4>🤖 Сервис удаления фона</h4>
+                <div class="api-input-group">
+                    <div class="api-status valid" id="apiStatus">
+                        ✅ Готов к работе (Python + PHP резерв)
+                    </div>
+                    <button class="test-api-btn" id="testServiceBtn">🧪 Тест сервиса</button>
+                </div>
+                <div class="service-info">
+                    <h5>📋 Как это работает:</h5>
+                    <ol>
+                        <li>Сначала пробуем Python + rembg (AI удаление фона)</li>
+                        <li>Если не получается - используем PHP алгоритм</li>
+                        <li>Результат накладывается на выбранный фон</li>
+                    </ol>
+                    <p>
+                        💡 <strong>Преимущества:</strong> Работает всегда, автоматический выбор лучшего метода
+                    </p>
+                </div>
+            </div>
+
+            <!-- Панель загрузки -->
+            <div class="upload-section" id="uploadSection">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📸</div>
+                    <h3>Загрузите вашу фотографию</h3>
+                    <p>Перетащите файл сюда или нажмите для выбора</p>
+                    <p style="font-size: 0.9rem; color: #6c757d; margin-top: 10px;">
+                        Поддерживаются форматы: JPG, PNG, WebP (до 12 МБ)
+                    </p>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                        📂 Выбрать фото
+                    </button>
+                </div>
+            </div>
+
+            <!-- Основной редактор -->
+            <div class="editor-main hidden" id="editorMain">
+                <!-- Панель инструментов -->
+                <div class="toolbar">
+                    <div class="toolbar-grid">
+                        <!-- Форматы документов -->
+                        <div class="tool-group">
+                            <h4>📋 Формат документа</h4>
+                            <div class="format-grid">
+                                <div class="format-btn active" data-format="passport">
+                                    <strong>Паспорт РФ</strong><br>
+                                    <small>35×45 мм</small>
+                                </div>
+                                <div class="format-btn" data-format="visa">
+                                    <strong>Виза</strong><br>
+                                    <small>35×45 мм</small>
+                                </div>
+                                <div class="format-btn" data-format="id">
+                                    <strong>Удостоверение</strong><br>
+                                    <small>30×40 мм</small>
+                                </div>
+                                <div class="format-btn" data-format="driving">
+                                    <strong>Водительские</strong><br>
+                                    <small>21×30 мм</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Фон -->
+                        <div class="tool-group">
+                            <h4>🎨 Цвет фона</h4>
+                            <div class="background-grid">
+                                <div class="bg-btn active" data-color="white" title="Белый"></div>
+                                <div class="bg-btn" data-color="blue" title="Синий"></div>
+                                <div class="bg-btn" data-color="red" title="Красный"></div>
+                                <div class="bg-btn" data-color="gray" title="Серый"></div>
+                            </div>
+                        </div>
+
+                        <!-- Коррекция изображения -->
+                        <div class="tool-group">
+                            <h4>⚡ Коррекция</h4>
+                            <div class="slider-container">
+                                <div class="slider-label">
+                                    <span>Яркость</span>
+                                    <span id="brightnessValue">0</span>
+                                </div>
+                                <input type="range" id="brightnessSlider" class="slider" min="-100" max="100" value="0">
+                            </div>
+                            <div class="slider-container">
+                                <div class="slider-label">
+                                    <span>Контрастность</span>
+                                    <span id="contrastValue">0</span>
+                                </div>
+                                <input type="range" id="contrastSlider" class="slider" min="-100" max="100" value="0">
+                            </div>
+                            <div class="slider-container">
+                                <div class="slider-label">
+                                    <span>Насыщенность</span>
+                                    <span id="saturationValue">0</span>
+                                </div>
+                                <input type="range" id="saturationSlider" class="slider" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+
+                        <!-- Действия -->
+                        <div class="tool-group">
+                            <h4>🛠️ Инструменты</h4>
+                            <div class="action-buttons">
+                                <button class="tool-btn premium" id="removeBgBtn">
+                                    🤖 Убрать фон AI
+                                </button>
+                                <button class="tool-btn" id="cropBtn">
+                                    ✂️ Обрезать
+                                </button>
+                                <button class="tool-btn danger" id="resetBtn">
+                                    🔄 Сбросить
+                                </button>
+                                <button class="tool-btn success" id="generateSheetBtn">
+                                    📄 Лист печати
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Рабочая область -->
+                <div class="workspace">
+                    <!-- Холст редактирования -->
+                    <div class="canvas-section">
+                        <div class="canvas-container" id="canvasContainer">
+                            <canvas id="mainCanvas"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Предварительный просмотр -->
+                    <div class="preview-section">
+                        <h3>👁️ Предварительный просмотр</h3>
+
+                        <div class="preview-container">
+                            <canvas id="previewCanvas"></canvas>
+                            <div class="preview-info">
+                                <p>📐 Размер: <span id="previewSize">35×45 мм</span></p>
+                                <p>🔍 Качество: <span id="previewDPI">300 DPI</span></p>
+                                <p>📊 Размер файла: <span id="fileSize">-</span></p>
+                            </div>
+                        </div>
+
+                        <div class="sheet-preview">
+                            <h4>📄 Лист для печати</h4>
+                            <canvas id="sheetCanvas"></canvas>
+                            <p style="margin-top: 10px; font-size: 0.9rem; color: #6c757d;">
+                                Формат A4 (210×297 мм)
+                            </p>
+                        </div>
+
+                        <div class="download-options">
+                            <div class="option-group">
+                                <label>Количество копий:</label>
+                                <select id="copiesCount">
+                                    <option value="1">1 фото</option>
+                                    <option value="4" selected>4 фото</option>
+                                    <option value="6">6 фото</option>
+                                    <option value="8">8 фото</option>
+                                    <option value="12">12 фото</option>
+                                </select>
+                            </div>
+
+                            <div class="option-group">
+                                <label>Качество:</label>
+                                <select id="qualitySelect">
+                                    <option value="0.8">Хорошее</option>
+                                    <option value="0.9" selected>Отличное</option>
+                                    <option value="1.0">Максимальное</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-option">
+                            <input type="checkbox" id="addBorder" checked>
+                            <label for="addBorder">Добавить рамку</label>
+                        </div>
+
+                        <div class="checkbox-option">
+                            <input type="checkbox" id="addGuides">
+                            <label for="addGuides">Линии разреза</label>
+                        </div>
+
+                        <div class="download-section">
+                            <button class="download-btn" id="downloadBtn" disabled>
+                                💾 Скачать готовое фото
+                            </button>
+                            <button class="download-btn" id="downloadSheetBtn" disabled style="margin-top: 10px;">
+                                🖨️ Скачать лист для печати
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <span id="statusText">Загрузите фотографию для начала работы</span>
+            <span id="imageInfo"></span>
+        </div>
+    </div>
+
+    <!-- Уведомления -->
+    <div class="notification" id="notification"></div>
+
+<script>
+class DocumentPhotoEditor {
+    constructor() {
+        this.originalImage = null;
+        this.processedImage = null;
+        this.currentImage = null;
+
+        this.mainCanvas = document.getElementById('mainCanvas');
+        this.previewCanvas = document.getElementById('previewCanvas');
+        this.sheetCanvas = document.getElementById('sheetCanvas');
+
+        this.mainCtx = this.mainCanvas.getContext('2d');
+        this.previewCtx = this.previewCanvas.getContext('2d');
+        this.sheetCtx = this.sheetCanvas.getContext('2d');
+
+        this.filters = {
+            brightness: 0,
+            contrast: 0,
+            saturation: 0,
+            sharpness: 0
+        };
+
+        this.documentFormats = {
+            passport: { width: 35, height: 45, name: 'Паспорт РФ' },
+            visa: { width: 35, height: 45, name: 'Виза' },
+            id: { width: 30, height: 40, name: 'Удостоверение' },
+            driving: { width: 21, height: 30, name: 'Водительские права' }
+        };
+
+        this.currentFormat = 'passport';
+        this.currentBackground = 'white';
+        this.serviceStatus = 'unknown';
+
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        this.testBackgroundService();
+        this.updatePreview();
+        this.generateSheet();
+
+        this.sheetCanvas.width = 2480;
+        this.sheetCanvas.height = 3508;
+    }
+
+    setupEventListeners() {
+        document.getElementById('testServiceBtn').addEventListener('click', () => this.testBackgroundService());
+
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+
+        fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                this.loadImage(files[0]);
+            }
+        });
+
+        document.querySelectorAll('.format-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.currentFormat = btn.dataset.format;
+                this.updatePreview();
+                this.generateSheet();
+                this.updateStatus(`Выбран формат: ${this.documentFormats[this.currentFormat].name}`);
+            });
+        });
+
+        document.querySelectorAll('.bg-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.bg-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.currentBackground = btn.dataset.color;
+                this.applyFilters();
+                this.updateStatus(`Выбран фон: ${this.getBackgroundName(this.currentBackground)}`);
+            });
+        });
+
+        const brightnessSlider = document.getElementById('brightnessSlider');
+        const contrastSlider = document.getElementById('contrastSlider');
+        const saturationSlider = document.getElementById('saturationSlider');
+
+        brightnessSlider.addEventListener('input', (e) => {
+            this.filters.brightness = parseInt(e.target.value);
+            document.getElementById('brightnessValue').textContent = e.target.value;
+            this.enhanceImageServer();
+        });
+
+        contrastSlider.addEventListener('input', (e) => {
+            this.filters.contrast = parseInt(e.target.value);
+            document.getElementById('contrastValue').textContent = e.target.value;
+            this.enhanceImageServer();
+        });
+
+        saturationSlider.addEventListener('input', (e) => {
+            this.filters.saturation = parseInt(e.target.value);
+            document.getElementById('saturationValue').textContent = e.target.value;
+            this.enhanceImageServer();
+        });
+
+        document.getElementById('removeBgBtn').addEventListener('click', () => this.removeBackgroundAdvanced());
+        document.getElementById('cropBtn').addEventListener('click', () => this.smartCrop());
+        document.getElementById('resetBtn').addEventListener('click', () => this.resetImage());
+        document.getElementById('generateSheetBtn').addEventListener('click', () => this.generateSheet());
+
+        document.getElementById('downloadBtn').addEventListener('click', () => this.downloadSingle());
+        document.getElementById('downloadSheetBtn').addEventListener('click', () => this.downloadSheet());
+
+        document.getElementById('copiesCount').addEventListener('change', () => this.generateSheet());
+        document.getElementById('addBorder').addEventListener('change', () => this.generateSheet());
+        document.getElementById('addGuides').addEventListener('change', () => this.generateSheet());
+    }
+
+    async testBackgroundService() {
+        const testBtn = document.getElementById('testServiceBtn');
+        const statusEl = document.getElementById('apiStatus');
+        const originalText = testBtn.textContent;
+
+        testBtn.textContent = '⏳ Тестирование...';
+        testBtn.disabled = true;
+
+        try {
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = 100;
+            testCanvas.height = 100;
+            const testCtx = testCanvas.getContext('2d');
+
+            testCtx.fillStyle = 'white';
+            testCtx.fillRect(0, 0, 100, 100);
+            testCtx.fillStyle = 'blue';
+            testCtx.fillRect(20, 20, 60, 60);
+
+            const testImageData = testCanvas.toDataURL('image/jpeg', 0.9);
+
+            const formData = new FormData();
+            formData.append('action', 'remove_bg');
+            formData.append('image_data', testImageData);
+
+            const response = await fetch('simple_bg_server.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                const method = result.method === 'php_advanced' ? 'Улучшенный PHP' : 'PHP алгоритм';
+                statusEl.textContent = `✅ Сервис работает (${method})`;
+                statusEl.className = 'api-status valid';
+                this.serviceStatus = 'working';
+
+                if (this.currentImage) {
+                    document.getElementById('removeBgBtn').disabled = false;
+                }
+
+                this.showNotification(`Сервис протестирован успешно! Используется: ${method}`, 'success');
+            } else {
+                throw new Error(result.error || 'Тест не прошел');
+            }
+
+        } catch (error) {
+            console.error('Service test error:', error);
+            statusEl.textContent = '❌ Сервис недоступен';
+            statusEl.className = 'api-status invalid';
+            this.serviceStatus = 'error';
+
+            document.getElementById('removeBgBtn').disabled = true;
+            this.showNotification('Сервис удаления фона недоступен: ' + error.message, 'error');
+        } finally {
+            testBtn.textContent = originalText;
+            testBtn.disabled = false;
+        }
+    }
+
+    async removeBackgroundAdvanced() {
+        if (!this.currentImage) {
+            this.showNotification('Загрузите изображение', 'error');
+            return;
+        }
+
+        const removeBgBtn = document.getElementById('removeBgBtn');
+        const originalText = removeBgBtn.innerHTML;
+
+        removeBgBtn.innerHTML = '<div class="loading-spinner"></div> AI обработка...';
+        removeBgBtn.disabled = true;
+
+        this.showNotification('Удаление фона с помощью улучшенного алгоритма...', 'info');
+
+        try {
+            const imageData = this.mainCanvas.toDataURL('image/jpeg', 0.9);
+
+            const formData = new FormData();
+            formData.append('action', 'remove_bg');
+            formData.append('image_data', imageData);
+
+            const response = await fetch('simple_bg_server.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP Error: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Processing failed');
+            }
+
+            const img = new Image();
+            img.onload = () => {
+                this.mainCtx.clearRect(0, 0, this.mainCanvas.width, this.mainCanvas.height);
+                this.mainCtx.fillStyle = this.getBackgroundColor();
+                this.mainCtx.fillRect(0, 0, this.mainCanvas.width, this.mainCanvas.height);
+                this.mainCtx.drawImage(img, 0, 0, this.mainCanvas.width, this.mainCanvas.height);
+
+                this.updatePreview();
+                this.generateSheet();
+
+                this.showNotification('Фон удален с помощью улучшенного алгоритма!');
+                console.log('Background removed successfully using:', result.method);
+            };
+
+            img.onerror = () => {
+                throw new Error('Ошибка загрузки обработанного изображения');
+            };
+
+            img.src = result.image_data;
+
+        } catch (error) {
+            console.error('Background removal error:', error);
+            this.showNotification('Ошибка: ' + error.message, 'error');
+        } finally {
+            removeBgBtn.innerHTML = originalText;
+            removeBgBtn.disabled = false;
+        }
+    }
+
+    async smartCrop() {
+        if (!this.currentImage) {
+            this.showNotification('Загрузите изображение', 'error');
+            return;
+        }
+
+        const cropBtn = document.getElementById('cropBtn');
+        const originalText = cropBtn.innerHTML;
+
+        cropBtn.innerHTML = '<div class="loading-spinner"></div> Умная обрезка...';
+        cropBtn.disabled = true;
+
+        this.showNotification('Выполняется умная обрезка...', 'info');
+
+        try {
+            const imageData = this.mainCanvas.toDataURL('image/jpeg', 0.9);
+
+            const formData = new FormData();
+            formData.append('action', 'smart_crop');
+            formData.append('image_data', imageData);
+            formData.append('format', this.currentFormat);
+
+            const response = await fetch('simple_bg_server.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP Error: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Crop failed');
+            }
+
+            const img = new Image();
+            img.onload = () => {
+                this.currentImage = img;
+                this.drawMainCanvas();
+                this.updatePreview();
+                this.generateSheet();
+
+                this.showNotification('Умная обрезка выполнена!');
+                console.log('Smart crop completed:', result.crop_info);
+            };
+
+            img.src = result.image_data;
+
+        } catch (error) {
+            console.error('Smart crop error:', error);
+            this.showNotification('Ошибка умной обрезки: ' + error.message, 'error');
+        } finally {
+            cropBtn.innerHTML = originalText;
+            cropBtn.disabled = false;
+        }
+    }
+
+    async enhanceImageServer() {
+        if (!this.currentImage) return;
+
+        // Дебаунс для избежания слишком частых запросов
+        clearTimeout(this.enhanceTimeout);
+        this.enhanceTimeout = setTimeout(async () => {
+            try {
+                const imageData = this.mainCanvas.toDataURL('image/jpeg', 0.9);
+
+                const formData = new FormData();
+                formData.append('action', 'enhance_image');
+                formData.append('image_data', imageData);
+                formData.append('brightness', this.filters.brightness);
+                formData.append('contrast', this.filters.contrast);
+                formData.append('saturation', this.filters.saturation);
+                formData.append('sharpness', this.filters.sharpness);
+                formData.append('auto_levels', 'true');
+                formData.append('noise_reduction', 'true');
+
+                const response = await fetch('simple_bg_server.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP Error: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const img = new Image();
+                    img.onload = () => {
+                        // Обновляем только если это последний запрос
+                        this.mainCtx.drawImage(img, 0, 0, this.mainCanvas.width, this.mainCanvas.height);
+                        this.updatePreview();
+                        this.generateSheet();
+                    };
+                    img.src = result.image_data;
+                }
+
+            } catch (error) {
+                console.error('Enhancement error:', error);
+            }
+        }, 300); // Ждем 300мс перед отправкой
+    }
+
+    // Остальные методы остаются без изменений...
+    handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (file) {
+            this.loadImage(file);
+        }
+    }
+
+    loadImage(file) {
+        if (!file.type.startsWith('image/')) {
+            this.showNotification('Пожалуйста, выберите изображение', 'error');
+            return;
+        }
+
+        if (file.size > 12 * 1024 * 1024) {
+            this.showNotification('Файл слишком большой. Максимум 12 МБ', 'error');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                this.originalImage = img;
+                this.currentImage = img;
+                this.showEditor();
+                this.drawMainCanvas();
+                this.updatePreview();
+                this.generateSheet();
+                this.enableDownloadButtons();
+
+                const fileSize = (file.size / 1024).toFixed(1) + ' КБ';
+                document.getElementById('fileSize').textContent = fileSize;
+                document.getElementById('imageInfo').textContent = 
+                    `${img.width}×${img.height} px, ${fileSize}`;
+
+                this.updateStatus('Изображение загружено успешно');
+                this.showNotification('Изображение загружено! Доступны улучшенные функции.');
+
+                if (this.serviceStatus === 'working') {
+                    document.getElementById('removeBgBtn').disabled = false;
+                }
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    showEditor() {
+        document.getElementById('uploadSection').classList.add('hidden');
+        document.getElementById('editorMain').classList.remove('hidden');
+        document.getElementById('editorMain').classList.add('fade-in');
+    }
+
+    drawMainCanvas() {
+        if (!this.currentImage) return;
+
+        const maxWidth = 800;
+        const maxHeight = 600;
+
+        let { width, height } = this.currentImage;
+
+        if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width *= ratio;
+            height *= ratio;
+        }
+
+        this.mainCanvas.width = width;
+        this.mainCanvas.height = height;
+
+        this.mainCtx.clearRect(0, 0, width, height);
+        this.mainCtx.drawImage(this.currentImage, 0, 0, width, height);
+    }
+
+    applyFilters() {
+        // Теперь фильтры применяются на сервере
+        this.enhanceImageServer();
+    }
+
+    updatePreview() {
+        if (!this.currentImage) return;
+
+        const format = this.documentFormats[this.currentFormat];
+        const aspectRatio = format.width / format.height;
+
+        let previewWidth, previewHeight;
+        if (aspectRatio > 1) {
+            previewWidth = 200;
+            previewHeight = 200 / aspectRatio;
+        } else {
+            previewHeight = 200;
+            previewWidth = 200 * aspectRatio;
+        }
+
+        this.previewCanvas.width = previewWidth;
+        this.previewCanvas.height = previewHeight;
+
+        this.previewCtx.fillStyle = this.getBackgroundColor();
+        this.previewCtx.fillRect(0, 0, previewWidth, previewHeight);
+
+        if (this.mainCanvas.width > 0 && this.mainCanvas.height > 0) {
+            const canvasAspect = this.mainCanvas.width / this.mainCanvas.height;
+
+            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+            if (canvasAspect > aspectRatio) {
+                drawHeight = previewHeight;
+                drawWidth = drawHeight * canvasAspect;
+                offsetX = (previewWidth - drawWidth) / 2;
+            } else {
+                drawWidth = previewWidth;
+                drawHeight = drawWidth / canvasAspect;
+                offsetY = (previewHeight - drawHeight) / 2;
+            }
+
+            this.previewCtx.drawImage(
+                this.mainCanvas,
+                offsetX, offsetY,
+                drawWidth, drawHeight
+            );
+        }
+
+        document.getElementById('previewSize').textContent = `${format.width}×${format.height} мм`;
+    }
+
+    generateSheet() {
+        const copiesCount = parseInt(document.getElementById('copiesCount').value);
+        const addBorder = document.getElementById('addBorder').checked;
+        const addGuides = document.getElementById('addGuides').checked;
+
+        const a4Width = 2480;
+        const a4Height = 3508;
+
+        this.sheetCanvas.width = a4Width;
+        this.sheetCanvas.height = a4Height;
+
+        this.sheetCtx.fillStyle = 'white';
+        this.sheetCtx.fillRect(0, 0, a4Width, a4Height);
+
+        if (!this.currentImage) return;
+
+        const format = this.documentFormats[this.currentFormat];
+        const photoWidth = Math.round((format.width / 25.4) * 300);
+        const photoHeight = Math.round((format.height / 25.4) * 300);
+
+        const margin = 60;
+
+        const cols = Math.floor((a4Width - 2 * margin) / (photoWidth + margin));
+        const rows = Math.floor((a4Height - 2 * margin) / (photoHeight + margin));
+
+        const gridWidth = cols * photoWidth + (cols - 1) * margin;
+        const gridHeight = rows * photoHeight + (rows - 1) * margin;
+        const startX = (a4Width - gridWidth) / 2;
+        const startY = (a4Height - gridHeight) / 2;
+
+        let photosPlaced = 0;
+
+        for (let row = 0; row < rows && photosPlaced < copiesCount; row++) {
+            for (let col = 0; col < cols && photosPlaced < copiesCount; col++) {
+                const x = startX + col * (photoWidth + margin);
+                const y = startY + row * (photoHeight + margin);
+
+                this.sheetCtx.fillStyle = this.getBackgroundColor();
+                this.sheetCtx.fillRect(x, y, photoWidth, photoHeight);
+
+                if (this.mainCanvas.width > 0 && this.mainCanvas.height > 0) {
+                    const aspectRatio = format.width / format.height;
+                    const canvasAspect = this.mainCanvas.width / this.mainCanvas.height;
+
+                    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+                    if (canvasAspect > aspectRatio) {
+                        drawHeight = photoHeight;
+                        drawWidth = drawHeight * canvasAspect;
+                        offsetX = (photoWidth - drawWidth) / 2;
+                    } else {
+                        drawWidth = photoWidth;
+                        drawHeight = drawWidth / canvasAspect;
+                        offsetY = (photoHeight - drawHeight) / 2;
+                    }
+
+                    this.sheetCtx.drawImage(
+                        this.mainCanvas,
+                        x + offsetX, y + offsetY,
+                        drawWidth, drawHeight
+                    );
+                }
+
+                if (addBorder) {
+                    this.sheetCtx.strokeStyle = '#cccccc';
+                    this.sheetCtx.lineWidth = 2;
+                    this.sheetCtx.strokeRect(x, y, photoWidth, photoHeight);
+                }
+
+                photosPlaced++;
+            }
+        }
+
+        if (addGuides) {
+            this.sheetCtx.strokeStyle = '#dddddd';
+            this.sheetCtx.lineWidth = 1;
+            this.sheetCtx.setLineDash([10, 5]);
+
+            for (let col = 0; col <= cols; col++) {
+                const x = startX + col * (photoWidth + margin) - margin / 2;
+                this.sheetCtx.beginPath();
+                this.sheetCtx.moveTo(x, startY - margin);
+                this.sheetCtx.lineTo(x, startY + gridHeight + margin);
+                this.sheetCtx.stroke();
+            }
+
+            for (let row = 0; row <= rows; row++) {
+                const y = startY + row * (photoHeight + margin) - margin / 2;
+                this.sheetCtx.beginPath();
+                this.sheetCtx.moveTo(startX - margin, y);
+                this.sheetCtx.lineTo(startX + gridWidth + margin, y);
+                this.sheetCtx.stroke();
+            }
+
+            this.sheetCtx.setLineDash([]);
+        }
+
+        const maxDisplayWidth = 300;
+        const maxDisplayHeight = 400;
+        const displayScale = Math.min(maxDisplayWidth / a4Width, maxDisplayHeight / a4Height);
+
+        this.sheetCanvas.style.width = Math.round(a4Width * displayScale) + 'px';
+        this.sheetCanvas.style.height = Math.round(a4Height * displayScale) + 'px';
+    }
+
+    resetImage() {
+        if (this.originalImage) {
+            this.currentImage = this.originalImage;
+            this.filters = { brightness: 0, contrast: 0, saturation: 0, sharpness: 0 };
+
+            document.getElementById('brightnessSlider').value = 0;
+            document.getElementById('contrastSlider').value = 0;
+            document.getElementById('saturationSlider').value = 0;
+            document.getElementById('brightnessValue').textContent = 0;
+            document.getElementById('contrastValue').textContent = 0;
+            document.getElementById('saturationValue').textContent = 0;
+
+            this.drawMainCanvas();
+            this.updatePreview();
+            this.generateSheet();
+
+            this.updateStatus('Изображение сброшено к оригиналу');
+            this.showNotification('Изображение восстановлено');
+        }
+    }
+
+    downloadSingle() {
+        if (!this.previewCanvas.width) return;
+
+        const format = this.documentFormats[this.currentFormat];
+        const quality = parseFloat(document.getElementById('qualitySelect').value);
+
+        const finalWidth = Math.round((format.width / 25.4) * 300);
+        const finalHeight = Math.round((format.height / 25.4) * 300);
+
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = finalWidth;
+        finalCanvas.height = finalHeight;
+        const finalCtx = finalCanvas.getContext('2d');
+
+        finalCtx.fillStyle = this.getBackgroundColor();
+        finalCtx.fillRect(0, 0, finalWidth, finalHeight);
+
+        if (this.mainCanvas.width > 0) {
+            const aspectRatio = format.width / format.height;
+            const canvasAspect = this.mainCanvas.width / this.mainCanvas.height;
+
+            let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+            if (canvasAspect > aspectRatio) {
+                drawHeight = finalHeight;
+                drawWidth = drawHeight * canvasAspect;
+                offsetX = (finalWidth - drawWidth) / 2;
+            } else {
+                drawWidth = finalWidth;
+                drawHeight = drawWidth / canvasAspect;
+                offsetY = (finalHeight - drawHeight) / 2;
+            }
+
+            finalCtx.drawImage(this.mainCanvas, offsetX, offsetY, drawWidth, drawHeight);
+        }
+
+        finalCanvas.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `фото_на_документы_${format.width}x${format.height}мм.jpg`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.showNotification('Высококачественное фото скачано!');
+        }, 'image/jpeg', quality);
+    }
+
+    downloadSheet() {
+        const quality = parseFloat(document.getElementById('qualitySelect').value);
+
+        this.sheetCanvas.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `лист_для_печати_A4_300dpi.jpg`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.showNotification('Лист для печати высокого качества скачан!');
+        }, 'image/jpeg', quality);
+    }
+
+    getBackgroundColor() {
+        const colors = {
+            white: '#ffffff',
+            blue: '#4A90E2',
+            red: '#E74C3C',
+            gray: '#95A5A6'
+        };
+        return colors[this.currentBackground] || '#ffffff';
+    }
+
+    getBackgroundName(color) {
+        const names = {
+            white: 'Белый',
+            blue: 'Синий',
+            red: 'Красный',
+            gray: 'Серый'
+        };
+        return names[color] || 'Белый';
+    }
+
+    enableDownloadButtons() {
+        document.getElementById('downloadBtn').disabled = false;
+        document.getElementById('downloadSheetBtn').disabled = false;
+    }
+
+    updateStatus(message) {
+        document.getElementById('statusText').textContent = message;
+    }
+
+    showNotification(message, type = 'success') {
+        const notification = document.getElementById('notification');
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.classList.add('show');
+
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, type === 'info' ? 5000 : 3000);
+    }
+}
+
+const editor = new DocumentPhotoEditor();
+
+window.addEventListener('error', (e) => {
+    editor.showNotification('Произошла ошибка: ' + e.message, 'error');
+});
+
+window.addEventListener('beforeunload', (e) => {
+    if (editor.currentImage) {
+        e.preventDefault();
+        e.returnValue = 'У вас есть несохраненные изменения. Вы уверены, что хотите покинуть страницу?';
+    }
+});
+</script>
+</body>
+</html>
