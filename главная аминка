@@ -1,747 +1,3225 @@
 <?php
-/**
- * ГЛАВНЫЙ ФАЙЛ АДМИНКИ - ТОЧКА ВХОДА
- * Интегрирует все модули и обеспечивает единую навигацию
- */
+mb_internal_encoding('UTF-8');
+date_default_timezone_set('Europe/Moscow');
+session_start();
 
-require_once 'functions.php';
-initSession();
+/* Paths */
+$BASE = __DIR__;
+$uploadsDir = $BASE.'/uploads';
+$ordersLog  = $BASE.'/orders.txt';
+$configFile = $BASE.'/config.json';
+$chatLog = $BASE.'/chat_log.txt';
+$aiKnowledgeFile = $BASE.'/ai_knowledge.json';
+$aiTrainingFile = $BASE.'/ai_training.json';
+$aiStatsFile = $BASE.'/ai_stats.json';
+$aiContextFile = $BASE.'/ai_context.json';
 
-// Определяем текущую страницу
-$page = $_GET['page'] ?? 'dashboard';
+/* FS init */
+if (!is_dir($uploadsDir)) @mkdir($uploadsDir, 0775, true);
+if (!file_exists($uploadsDir.'/.htaccess')) {
+  @file_put_contents($uploadsDir.'/.htaccess', 'php_flag engine off\nOptions -ExecCGI\n<FilesMatch \'\\.(php|phar|phtml|cgi|pl|py)$\'>\nDeny from all\n</FilesMatch>\n');
+}
+if (!file_exists($ordersLog)) @file_put_contents($ordersLog, '');
+if (!file_exists($chatLog)) @file_put_contents($chatLog, '');
 
-// Обработка AJAX запросов
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    header('Content-Type: application/json; charset=utf-8');
+/* ========== РАСШИРЕННАЯ ИИ СИСТЕМА ========== */
 
-    try {
-        switch ($_POST['action']) {
-            case 'delete_product':
-                $id = $_POST['id'] ?? 0;
-                $result = deleteProduct($id);
-                echo json_encode([
-                    'success' => $result,
-                    'message' => $result ? 'Товар удален' : 'Ошибка удаления товара'
-                ]);
-                break;
+/* Инициализация базы знаний для разговорного ИИ */
+$defaultKnowledge = [
+  'greetings' => [
+    'общие' => [
+      'привет' => 'Привет! Я Артемий, ваш помощник по печати! Что интересует?',
+      'здравствуйте' => 'Здравствуйте! Добро пожаловать в наш фотоцентр! Чем могу помочь?',
+      'добрый день' => 'Добрый день! Меня зовут Артемий, помогу с любыми вопросами по печати!',
+      'хай' => 'Хай! Что нужно напечатать?',
+      'йо' => 'Йоу! Чем помочь с печатью?'
+    ]
+  ],
+  'services' => [
+    'фото документы' => 'Фото на документы делаем за 5 минут! Цена 400 рублей, электронная версия бесплатно. Все требования соблюдаем - паспорт, права, виза.',
+    'визитки' => 'Визитки печатаем на мелованной бумаге 300 г/м². Готовы за 1-2 дня. От 900 рублей за 100 штук. Можем с вашим дизайном или поможем создать.',
+    'баннеры' => 'Баннеры из ПВХ 440 г/м² с люверсами. Срочное изготовление 2-4 часа. От 1100 рублей за м². Качество гарантируем!',
+    'листовки' => 'Листовки А6/А5/А4, одно- и двусторонние. Тираж от 100 штук. Срок 1-2 дня. Разные виды бумаги.',
+    'штампы' => 'Штампы и печати изготавливаем в день заказа! От 1800 рублей с автоматической оснасткой. Качественная резина.',
+    'печать документов' => 'Распечатка документов А4/А3 - черно-белая от 20 рублей, цветная от 50 рублей за лист. Быстро и качественно.',
+    'фотопечать' => 'Печатаем фото 10×15, 15×21, 20×30 см. Глянцевая и матовая бумага. Готово через 15-30 минут. От 30 рублей за фото.',
+    'ламинация' => 'Ламинируем документы от А6 до А3. Горячая и холодная ламинация. Толщина пленки 75-250 микрон. Делается сразу.'
+  ],
+  'prices' => [
+    'фото документы' => '400 рублей за фото на документы (до 6 штук)',
+    'распечатка' => 'черно-белая от 20 рублей, цветная от 50 рублей за лист',
+    'визитки' => 'от 900 рублей за 100 штук на мелованной бумаге',
+    'баннеры' => 'от 1100 рублей за м², люверсы включены',
+    'фотопечать' => 'от 30 рублей за фото стандартных размеров',
+    'штампы' => 'от 1800 рублей с автоматической оснасткой',
+    'ламинация' => 'от 60 рублей в зависимости от размера'
+  ],
+  'technical_specs' => [
+    'файлы' => 'Принимаем PDF, JPG, PNG, AI, PSD, CDR, EPS. Рекомендуем PDF в CMYK, 300 dpi с вылетами 2-3 мм.',
+    'требования' => 'Для качественной печати нужно: CMYK, 300 dpi, вылеты 2-3 мм, шрифты в кривых.',
+    'форматы' => 'Работаем с форматами от визитки до А0. Баннеры до 5 метров шириной.',
+    'материалы' => 'Бумага офсетная и мелованная, ПВХ-баннер, самоклеящаяся пленка, фотобумага глянец/мат.'
+  ],
+  'help' => [
+    'общая помощь' => 'Могу помочь выбрать услугу, рассчитать стоимость, объяснить технические требования. Спрашивайте!',
+    'консультация' => 'Даю бесплатные консультации по печати, дизайну, материалам. 40 лет опыта в типографском деле!',
+    'проверка макета' => 'Проверяем все макеты бесплатно перед печатью. Исправим ошибки и подскажем как улучшить.'
+  ],
+  'delivery' => [
+    'доставка' => 'Доставляем по Сосновому Бору: центр бесплатно, окраины 150-300₽. По России Почтой России.',
+    'самовывоз' => 'Самовывоз по адресу: ул. Красных Фортов, 49а (рядом с OZON и Саша Суши)',
+    'сроки доставки' => 'По городу в день заказа, по России 3-7 дней в зависимости от региона.'
+  ],
+  'contacts' => [
+    'телефон' => '+7 (952) 200-39-90',
+    'адрес' => 'Ленинградская обл., Сосновый Бор, ул. Красных Фортов, 49а',
+    'время работы' => 'Пн-Пт 10:00-20:00, Сб-Вс 11:00-18:00',
+    'email' => 'artcopy78@bk.ru'
+  ],
+  // База знаний разговорной речи
+  'casual_speech' => [
+    'че ты' => 'что ты',
+    'шо ты' => 'что ты', 
+    'чё ты' => 'что ты',
+    'кем ты' => 'кто ты',
+    'каво ты' => 'что ты',
+    'крч' => 'короче',
+    'кст' => 'кстати',
+    'тип' => 'типа',
+    'норм' => 'нормально',
+    'збс' => 'замечательно',
+    'канеш' => 'конечно',
+    'спс' => 'спасибо',
+    'пжл' => 'пожалуйста',
+    'лан' => 'ладно',
+    'ок' => 'хорошо',
+    'агась' => 'да',
+    'неа' => 'нет',
+    'хз' => 'не знаю',
+    'батенька' => 'молодой человек',
+    'голубчик' => 'дорогой',
+    'касатик' => 'милый',
+    'деточка' => 'ребенок'
+  ]
+];
 
-            case 'update_order_status':
-                $id = $_POST['id'] ?? 0;
-                $status = trim($_POST['status'] ?? '');
-                $result = updateOrderStatus($id, $status);
-                echo json_encode([
-                    'success' => $result,
-                    'message' => $result ? 'Статус заказа обновлен' : 'Ошибка обновления статуса'
-                ]);
-                break;
+if (!file_exists($aiKnowledgeFile)) @file_put_contents($aiKnowledgeFile, json_encode($defaultKnowledge, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
 
-            case 'delete_category':
-                $id = $_POST['id'] ?? 0;
-                $result = deleteCategory($id);
-                echo json_encode([
-                    'success' => $result,
-                    'message' => $result ? 'Категория удалена' : 'Ошибка удаления категории'
-                ]);
-                break;
+// Инициализация файла обучения
+$defaultTraining = [
+  'conversations' => [],
+  'user_feedback' => [],
+  'learning_patterns' => [],
+  'context_memory' => []
+];
+if (!file_exists($aiTrainingFile)) @file_put_contents($aiTrainingFile, json_encode($defaultTraining, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
 
-            default:
-                echo json_encode(['success' => false, 'message' => 'Неизвестное действие']);
-                break;
-        }
-    } catch (Exception $e) {
-        error_log('Ошибка в админ панели: ' . $e->getMessage());
-        echo json_encode(['success' => false, 'message' => 'Внутренняя ошибка сервера']);
+// Инициализация статистики
+$defaultStats = [
+  'total_conversations' => 0,
+  'successful_responses' => 0,
+  'learning_events' => 0,
+  'user_satisfaction' => 0,
+  'knowledge_updates' => 0,
+  'casual_interactions' => 0
+];
+if (!file_exists($aiStatsFile)) @file_put_contents($aiStatsFile, json_encode($defaultStats, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+/* ========== ИИ ЧАТ-БОТ С ПОДДЕРЖКОЙ РАЗГОВОРНОЙ РЕЧИ ========== */
+
+if (($_POST['mode']??'')==='ai_chat') {
+  header('Content-Type: application/json; charset=utf-8');
+
+  try {
+    $userMessage = trim($_POST['message'] ?? '');
+    if ($userMessage === '') throw new Exception('Пустое сообщение');
+
+    // Обновляем статистику
+    updateAIStats('total_conversations');
+
+    // Записываем в лог для обучения
+    $chatData = [
+      'type' => 'ai_chat', 
+      'user_message' => $userMessage,
+      'timestamp' => date('Y-m-d H:i:s'),
+      'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+    ];
+
+    // Получаем ответ от ИИ
+    $aiResponse = getSmartAIResponse($userMessage);
+    $chatData['ai_response'] = $aiResponse;
+
+    // Логируем чат
+    log_chat($chatLog, $chatData);
+
+    // Обучаем ИИ на основе диалога
+    trainAIFromChat($userMessage, $aiResponse);
+
+    echo json_encode([
+      'ok' => true,
+      'response' => $aiResponse,
+      'timestamp' => date('H:i'),
+      'learned' => true
+    ]);
+    exit;
+
+  } catch (Exception $e) {
+    echo json_encode(['ok' => false, 'message' => $e->getMessage()]);
+    exit;
+  }
+}
+
+// Обратная связь по качеству ответа ИИ
+if (($_POST['mode']??'')==='ai_feedback') {
+  header('Content-Type: application/json; charset=utf-8');
+
+  try {
+    $rating = (int)($_POST['rating'] ?? 0);
+    $message = trim($_POST['message'] ?? '');
+
+    if ($rating < 1 || $rating > 5) throw new Exception('Неверная оценка');
+
+    // Сохраняем обратную связь
+    $training = json_decode(@file_get_contents($aiTrainingFile), true) ?: [];
+    if (!isset($training['user_feedback'])) $training['user_feedback'] = [];
+
+    $training['user_feedback'][] = [
+      'timestamp' => date('Y-m-d H:i:s'),
+      'rating' => $rating,
+      'message' => $message,
+      'ip' => $_SERVER['REMOTE_ADDR'] ?? ''
+    ];
+
+    // Оставляем только последние 500 отзывов
+    if (count($training['user_feedback']) > 500) {
+      $training['user_feedback'] = array_slice($training['user_feedback'], -500);
     }
+
+    file_put_contents($aiTrainingFile, json_encode($training, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+
+    updateAIStats('user_satisfaction', $rating);
+
+    echo json_encode(['ok' => true, 'message' => 'Спасибо за оценку!']);
     exit;
+
+  } catch (Exception $e) {
+    echo json_encode(['ok' => false, 'message' => $e->getMessage()]);
+    exit;
+  }
 }
 
-// Получаем данные для дашборда
-$stats = getDashboardStats();
+/* ========== УМНАЯ ИИ СИСТЕМА ========== */
 
-// Если это запрос к модулю товаров - подключаем его
-if (in_array($page, ['products', 'product_create', 'product_edit', 'product_view'])) {
-    // Конвертируем параметры для модуля товаров
-    $mode = 'list';
-    if ($page === 'product_create') $mode = 'create';
-    if ($page === 'product_edit') $mode = 'edit';
-    if ($page === 'product_view') $mode = 'view';
+function getSmartAIResponse($userMessage) {
+  global $aiKnowledgeFile;
 
-    $_GET['mode'] = $mode;
-    include 'products_mega_module.php';
-    exit;
+  // Загружаем базу знаний
+  $knowledge = json_decode(@file_get_contents($aiKnowledgeFile), true) ?: [];
+
+  // ЭТАП 1: Нормализуем сообщение (убираем сленг и мат)
+  $normalizedMessage = normalizeCasualSpeech($userMessage);
+
+  // ЭТАП 2: Определяем тип пользователя по манере речи
+  $userType = detectUserType($userMessage);
+
+  // ЭТАП 3: Определяем намерение пользователя
+  $intent = detectUserIntent($normalizedMessage);
+
+  // ЭТАП 4: Ищем ответ в базе знаний
+  $answer = findSmartAnswer($normalizedMessage, $knowledge, $intent);
+
+  // ЭТАП 5: Адаптируем ответ под тип пользователя
+  $response = adaptResponseToUser($answer, $userType, $intent, $userMessage);
+
+  // ЭТАП 6: Добавляем дополнительную информацию если нужно
+  $response = enhanceResponse($response, $intent, $userType);
+
+  return $response;
 }
 
+/* НОРМАЛИЗАЦИЯ РАЗГОВОРНОЙ РЕЧИ */
+function normalizeCasualSpeech($message) {
+  $message = mb_strtolower(trim($message));
+
+  // Расширенный словарь замен
+  $slangMap = [
+    // Гопнический сленг
+    'че' => 'что', 'чё' => 'что', 'шо' => 'что', 'кем' => 'кто',
+    'каво' => 'кого', 'куды' => 'куда', 'откель' => 'откуда',
+    'нахер' => '', 'нафиг' => '', 'блять' => '', 'бля' => '',
+    'хуй' => '', 'пиздец' => 'очень плохо', 'охуеть' => 'удивительно',
+    'заебись' => 'отлично', 'збс' => 'замечательно', 'норм' => 'нормально',
+    'хуйня' => 'ерунда', 'пиздато' => 'отлично', 'ахуенно' => 'отлично',
+    'нихуя' => 'ничего', 'похуй' => 'все равно', 'заебал' => 'надоел',
+    'заебало' => 'надоело', 'сука' => '', 'мудак' => '', 'дебил' => '',
+
+    // Молодежный сленг  
+    'крч' => 'короче', 'кст' => 'кстати', 'тип' => 'типа',
+    'чисто' => 'просто', 'базар' => 'разговор', 'прикол' => 'интересно',
+    'жесть' => 'ужасно', 'топ' => 'отлично', 'кринж' => 'стыдно',
+    'рофл' => 'смешно', 'имба' => 'очень хорошо', 'изи' => 'легко',
+    'кул' => 'круто', 'ауф' => 'вау', 'агрись' => 'злись',
+    'вайб' => 'настроение', 'хайп' => 'популярность', 'флекс' => 'хвастовство',
+    'свайп' => 'смахнуть', 'лайк' => 'нравится', 'репост' => 'поделиться',
+    'сториз' => 'истории', 'инста' => 'инстаграм', 'тикток' => 'тикток',
+
+    // Бабушкин говор
+    'батенька' => 'молодой человек', 'голубчик' => 'дорогой',
+    'касатик' => 'милый', 'деточка' => 'ребенок', 'голубушка' => 'девочка',
+    'энто' => 'это', 'штой-то' => 'что-то', 'скоко' => 'сколько',
+    'тады' => 'тогда', 'туды' => 'туда', 'сюды' => 'сюда',
+    'откедова' => 'откуда', 'покедова' => 'пока', 'ишь' => 'смотри',
+    'чево' => 'чего', 'нешто' => 'неужели', 'коли' => 'если',
+
+    // Интернет сокращения
+    'спс' => 'спасибо', 'пжл' => 'пожалуйста', 'лан' => 'ладно',
+    'ок' => 'хорошо', 'оке' => 'окей', 'агась' => 'да', 'неа' => 'нет',
+    'канеш' => 'конечно', 'пон' => 'понял', 'непон' => 'не понял',
+    'хз' => 'не знаю', 'пох' => 'все равно', 'инфа' => 'информация',
+    'комп' => 'компьютер', 'проц' => 'процессор', 'винда' => 'windows',
+    'софт' => 'программа', 'хард' => 'железо', 'емейл' => 'email',
+
+    // Региональные особенности
+    'када' => 'когда', 'тода' => 'тогда', 'многа' => 'много',
+    'мала' => 'мало', 'больша' => 'больше', 'меньша' => 'меньше',
+    'красива' => 'красиво', 'умна' => 'умно', 'добра' => 'добро',
+
+    // Эмоциональные междометия  
+    'ого' => 'ого', 'ага' => 'да', 'угу' => 'да', 'блин' => '',
+    'елки' => '', 'палки' => '', 'капец' => 'ужас', 'писец' => 'ужас',
+    'атас' => 'опасность', 'зашибись' => 'отлично'
+  ];
+
+  // Применяем замены по словам
+  $words = explode(' ', $message);
+  $normalizedWords = [];
+
+  foreach ($words as $word) {
+    // Убираем знаки препинания для проверки
+    $cleanWord = preg_replace('/[^\w\d]+/u', '', $word);
+
+    if (isset($slangMap[$cleanWord]) && $slangMap[$cleanWord] !== '') {
+      $normalizedWords[] = $slangMap[$cleanWord];
+    } elseif (!isset($slangMap[$cleanWord])) {
+      $normalizedWords[] = $word;
+    }
+    // Если $slangMap[$cleanWord] === '', то слово удаляется
+  }
+
+  $message = implode(' ', $normalizedWords);
+
+  // Убираем лишние пробелы
+  $message = preg_replace('/\s+/', ' ', trim($message));
+
+  return $message;
+}
+
+/* ОПРЕДЕЛЕНИЕ ТИПА ПОЛЬЗОВАТЕЛЯ */
+function detectUserType($message) {
+  $message = mb_strtolower($message);
+
+  // Счетчики для разных типов
+  $gopnik_score = 0;
+  $youth_score = 0;
+  $elderly_score = 0;
+  $business_score = 0;
+
+  // Гопнический сленг
+  $gopnik_words = ['блять', 'хуй', 'пиздец', 'охуеть', 'заебись', 'нахер', 'сука', 'че', 'шо', 'збс', 'норм'];
+  foreach ($gopnik_words as $word) {
+    if (strpos($message, $word) !== false) $gopnik_score += 2;
+  }
+
+  // Молодежный сленг
+  $youth_words = ['крч', 'кст', 'тип', 'топ', 'кринж', 'рофл', 'вайб', 'хайп', 'флекс', 'изи', 'кул', 'ауф'];
+  foreach ($youth_words as $word) {
+    if (strpos($message, $word) !== false) $youth_score += 2;
+  }
+
+  // Пожилая речь
+  $elderly_words = ['батенька', 'голубчик', 'касатик', 'деточка', 'энто', 'скоко', 'куды', 'тады', 'голубушка'];
+  foreach ($elderly_words as $word) {
+    if (strpos($message, $word) !== false) $elderly_score += 3;
+  }
+
+  // Деловая речь
+  $business_words = ['организация', 'предприятие', 'заключить', 'договор', 'безналичный', 'счет', 'реквизиты'];
+  foreach ($business_words as $word) {
+    if (strpos($message, $word) !== false) $business_score += 2;
+  }
+
+  // Определяем тип по наибольшему счету
+  $max_score = max($gopnik_score, $youth_score, $elderly_score, $business_score);
+
+  if ($max_score === 0) return 'normal';
+  if ($max_score === $elderly_score) return 'elderly';
+  if ($max_score === $gopnik_score) return 'gopnik';
+  if ($max_score === $youth_score) return 'youth';
+  if ($max_score === $business_score) return 'business';
+
+  return 'normal';
+}
+
+/* ОПРЕДЕЛЕНИЕ НАМЕРЕНИЙ ПОЛЬЗОВАТЕЛЯ */
+function detectUserIntent($message) {
+  $message = mb_strtolower($message);
+
+  // Расширенные паттерны намерений
+  $intents = [
+    'greeting' => [
+      'keywords' => ['привет', 'здравствуй', 'добро утро', 'добрый день', 'добрый вечер', 'хай', 'йо', 'здорова'],
+      'weight' => 3
+    ],
+    'price_inquiry' => [
+      'keywords' => ['цена', 'стоимость', 'сколько', 'цену', 'тариф', 'прайс', 'дорого', 'дешево', 'бабки', 'деньги', 'стоит', 'за сколько'],
+      'weight' => 3
+    ],
+    'time_inquiry' => [
+      'keywords' => ['время', 'срок', 'быстро', 'долго', 'когда', 'готово', 'скоро', 'часов', 'дней', 'минут', 'сколько времени'],
+      'weight' => 3
+    ],
+    'service_inquiry' => [
+      'keywords' => ['услуги', 'сервис', 'делаете', 'можете', 'есть ли', 'умеете', 'предоставляете', 'занимаетесь'],
+      'weight' => 2
+    ],
+    'photo_service' => [
+      'keywords' => ['фото', 'фотография', 'снимок', 'документы', 'фотка', 'сфоткаться', 'фотографироваться', 'паспорт', 'права'],
+      'weight' => 4
+    ],
+    'printing_service' => [
+      'keywords' => ['печать', 'распечатка', 'печатать', 'напечатать', 'печатнуть', 'принтер', 'копия'],
+      'weight' => 3
+    ],
+    'design_service' => [
+      'keywords' => ['визитки', 'баннер', 'листовки', 'плакат', 'дизайн', 'макет', 'баннеры', 'визитка'],
+      'weight' => 4
+    ],
+    'delivery_inquiry' => [
+      'keywords' => ['доставка', 'привезти', 'курьер', 'доставить', 'подвезти', 'привезете', 'отправка'],
+      'weight' => 3
+    ],
+    'quality_inquiry' => [
+      'keywords' => ['качество', 'хорошо', 'плохо', 'отлично', 'круто', 'норма', 'нормально', 'супер'],
+      'weight' => 2
+    ],
+    'help_request' => [
+      'keywords' => ['помощь', 'помоги', 'не знаю', 'что делать', 'подскажи', 'расскажи', 'объясни', 'как'],
+      'weight' => 2
+    ],
+    'technical_inquiry' => [
+      'keywords' => ['файл', 'формат', 'требования', 'макет', 'pdf', 'jpg', 'размер', 'разрешение', 'dpi'],
+      'weight' => 3
+    ],
+    'complaint' => [
+      'keywords' => ['плохо', 'ужасно', 'отвратительно', 'кошмар', 'ужас', 'фигня', 'дерьмо'],
+      'weight' => 4
+    ],
+    'compliment' => [
+      'keywords' => ['спасибо', 'отлично', 'супер', 'круто', 'замечательно', 'класс', 'молодцы'],
+      'weight' => 3
+    ],
+    'rude' => [
+      'keywords' => ['дурак', 'идиот', 'тупой', 'долбоеб', 'придурок', 'говно', 'отстой', 'лохи'],
+      'weight' => 4
+    ]
+  ];
+
+  $scores = [];
+
+  foreach ($intents as $intent => $data) {
+    $score = 0;
+    foreach ($data['keywords'] as $keyword) {
+      if (strpos($message, $keyword) !== false) {
+        $score += $data['weight'];
+      }
+    }
+    if ($score > 0) {
+      $scores[$intent] = $score;
+    }
+  }
+
+  if (empty($scores)) return 'general';
+
+  // Возвращаем намерение с наибольшим весом
+  arsort($scores);
+  return array_keys($scores)[0];
+}
+
+/* УМНЫЙ ПОИСК ОТВЕТА */
+function findSmartAnswer($message, $knowledge, $intent) {
+  // Приоритетные разделы для разных намерений
+  $priority_sections = [
+    'greeting' => ['greetings'],
+    'price_inquiry' => ['prices', 'services'],
+    'time_inquiry' => ['services', 'technical_specs'],
+    'service_inquiry' => ['services', 'help'],
+    'photo_service' => ['services'],
+    'printing_service' => ['services'],
+    'design_service' => ['services'],
+    'delivery_inquiry' => ['delivery'],
+    'technical_inquiry' => ['technical_specs'],
+    'help_request' => ['help', 'services']
+  ];
+
+  // Сначала ищем в приоритетных разделах
+  if (isset($priority_sections[$intent])) {
+    foreach ($priority_sections[$intent] as $section) {
+      if (isset($knowledge[$section])) {
+        $answer = searchInKnowledgeSection($message, $knowledge[$section]);
+        if ($answer) return $answer;
+      }
+    }
+  }
+
+  // Если не найдено, ищем по всем разделам
+  foreach ($knowledge as $section => $data) {
+    $answer = searchInKnowledgeSection($message, $data);
+    if ($answer) return $answer;
+  }
+
+  // Поиск по ключевым словам с нечетким сравнением
+  return fuzzySearchInKnowledge($message, $knowledge);
+}
+
+/* ПОИСК В РАЗДЕЛЕ ЗНАНИЙ */
+function searchInKnowledgeSection($message, $data) {
+  if (!is_array($data)) return null;
+
+  foreach ($data as $key => $value) {
+    if (is_string($key)) {
+      // Точное совпадение
+      if (strpos($message, $key) !== false) {
+        return is_array($value) ? getRandomFromArray($value) : $value;
+      }
+
+      // Поиск отдельных слов
+      $messageWords = explode(' ', $message);
+      $keyWords = explode(' ', $key);
+
+      $matches = 0;
+      foreach ($keyWords as $keyWord) {
+        foreach ($messageWords as $messageWord) {
+          if (strpos($messageWord, $keyWord) !== false || strpos($keyWord, $messageWord) !== false) {
+            $matches++;
+            break;
+          }
+        }
+      }
+
+      // Если совпадает больше половины слов
+      if ($matches > 0 && $matches / count($keyWords) >= 0.5) {
+        return is_array($value) ? getRandomFromArray($value) : $value;
+      }
+    }
+  }
+
+  return null;
+}
+
+/* НЕЧЕТКИЙ ПОИСК */
+function fuzzySearchInKnowledge($message, $knowledge) {
+  $bestMatch = null;
+  $bestScore = 0;
+
+  foreach ($knowledge as $section => $data) {
+    if (!is_array($data)) continue;
+
+    foreach ($data as $key => $value) {
+      if (!is_string($key)) continue;
+
+      $score = calculateSimilarity($message, $key);
+      if ($score > $bestScore && $score > 0.3) {
+        $bestScore = $score;
+        $bestMatch = is_array($value) ? getRandomFromArray($value) : $value;
+      }
+    }
+  }
+
+  return $bestMatch;
+}
+
+/* РАСЧЕТ СХОЖЕСТИ СТРОК */
+function calculateSimilarity($str1, $str2) {
+  $str1 = mb_strtolower($str1);
+  $str2 = mb_strtolower($str2);
+
+  $words1 = explode(' ', $str1);
+  $words2 = explode(' ', $str2);
+
+  $commonWords = array_intersect($words1, $words2);
+  $totalWords = array_unique(array_merge($words1, $words2));
+
+  return count($totalWords) > 0 ? count($commonWords) / count($totalWords) : 0;
+}
+
+/* АДАПТАЦИЯ ОТВЕТА ПОД ПОЛЬЗОВАТЕЛЯ */
+function adaptResponseToUser($answer, $userType, $intent, $originalMessage) {
+  // Если ответ не найден, генерируем базовый
+  if (!$answer) {
+    $answer = generateBaseResponse($intent, $userType);
+  }
+
+  // Адаптируем стиль ответа
+  switch ($userType) {
+    case 'gopnik':
+      return adaptToGopnikStyle($answer, $intent);
+    case 'youth':
+      return adaptToYouthStyle($answer, $intent);
+    case 'elderly':
+      return adaptToElderlyStyle($answer, $intent);
+    case 'business':
+      return adaptToBusinessStyle($answer, $intent);
+    default:
+      return $answer;
+  }
+}
+
+/* СТИЛИ РЕЧИ */
+function adaptToGopnikStyle($text, $intent) {
+  $prefixes = [
+    'greeting' => ['Йоу!', 'Здарова!', 'Привет, браток!'],
+    'price_inquiry' => ['Слушай,', 'Короче, по ценам:', 'Вот тебе инфа:'],
+    'general' => ['Слышь,', 'Короче,', 'По факту,']
+  ];
+
+  $suffixes = [
+    'greeting' => ['Че надо?', 'Чем помочь?', 'Что по делу?'],
+    'price_inquiry' => ['Въехал?', 'Понял?', 'Нормально?'],
+    'general' => ['Зашибись!', 'В натуре!', 'Понял, да?']
+  ];
+
+  $prefix = getRandomFromArray($prefixes[$intent] ?? $prefixes['general']);
+  $suffix = getRandomFromArray($suffixes[$intent] ?? $suffixes['general']);
+
+  return $prefix . ' ' . lcfirst($text) . ' ' . $suffix;
+}
+
+function adaptToYouthStyle($text, $intent) {
+  $prefixes = [
+    'greeting' => ['Хай!', 'Привет!', 'Йо!'],
+    'price_inquiry' => ['Блин, по ценам:', 'Типа, цены такие:', 'В общем, стоит:'],
+    'general' => ['Короч,', 'Типа,', 'В общем,']
+  ];
+
+  $suffixes = [
+    'greeting' => ['Что нужно?', 'Чем помочь?', 'Что интересует?'],
+    'price_inquiry' => ['Топчик!', 'Понимаешь?', 'Изи!'],
+    'general' => ['Вот так вот!', 'Понял?', 'Круто же!']
+  ];
+
+  $prefix = getRandomFromArray($prefixes[$intent] ?? $prefixes['general']);
+  $suffix = getRandomFromArray($suffixes[$intent] ?? $suffixes['general']);
+
+  return $prefix . ' ' . lcfirst($text) . ' ' . $suffix;
+}
+
+function adaptToElderlyStyle($text, $intent) {
+  $prefixes = [
+    'greeting' => ['Здравствуйте, голубчик!', 'Добро пожаловать, касатик!', 'Здравствуйте, батенька!'],
+    'price_inquiry' => ['Деточка, цены у нас такие:', 'Голубчик, стоимость следующая:', 'Батенька, по цене:'],
+    'general' => ['Касатик,', 'Голубчик,', 'Деточка,']
+  ];
+
+  $suffixes = [
+    'greeting' => ['Чем могу помочь?', 'Что вас интересует?', 'Слушаю вас!'],
+    'price_inquiry' => ['Понимаете?', 'Все ясно?', 'Подходит?'],
+    'general' => ['Всего доброго!', 'Удачи вам!', 'До свидания!']
+  ];
+
+  $prefix = getRandomFromArray($prefixes[$intent] ?? $prefixes['general']);
+  $suffix = getRandomFromArray($suffixes[$intent] ?? $suffixes['general']);
+
+  return $prefix . ' ' . lcfirst($text) . ' ' . $suffix;
+}
+
+function adaptToBusinessStyle($text, $intent) {
+  $prefixes = [
+    'greeting' => ['Добрый день!', 'Здравствуйте!', 'Приветствую!'],
+    'price_inquiry' => ['Стоимость услуг:', 'Прайс следующий:', 'Цены составляют:'],
+    'general' => ['Уведомляю,', 'Информирую,', 'Сообщаю,']
+  ];
+
+  $suffixes = [
+    'greeting' => ['Как дела?', 'Чем можем помочь?', 'Готовы к сотрудничеству!'],
+    'price_inquiry' => ['Работаем по безналу.', 'Выставим счет.', 'Заключим договор.'],
+    'general' => ['С уважением.', 'Рады сотрудничеству.', 'Обращайтесь!']
+  ];
+
+  $prefix = getRandomFromArray($prefixes[$intent] ?? $prefixes['general']);
+  $suffix = getRandomFromArray($suffixes[$intent] ?? $suffixes['general']);
+
+  return $prefix . ' ' . lcfirst($text) . ' ' . $suffix;
+}
+
+/* ГЕНЕРАЦИЯ БАЗОВОГО ОТВЕТА */
+function generateBaseResponse($intent, $userType) {
+  $responses = [
+    'greeting' => [
+      'Добро пожаловать в наш фотоцентр! Чем могу помочь?',
+      'Здравствуйте! Я Артемий, ваш помощник по печати!',
+      'Привет! Что интересует из наших услуг?'
+    ],
+    'price_inquiry' => [
+      'Цены зависят от услуги. Фото на документы 400₽, визитки от 900₽, баннеры от 1100₽.',
+      'Стоимость разная: печать от 20₽/лист, фото от 30₽/шт, штампы от 1800₽.',
+      'Прайс большой! Что конкретно интересует? Подскажу точную цену.'
+    ],
+    'time_inquiry' => [
+      'Сроки зависят от услуги: фото 5 минут, баннеры 2-4 часа, визитки 1-2 дня.',
+      'Быстро! Фото делаем сразу, распечатка за 15 минут, срочные заказы в приоритете.',
+      'Время разное: простые услуги сразу, сложные до 2 дней.'
+    ],
+    'service_inquiry' => [
+      'У нас полный спектр: печать, фото, баннеры, визитки, штампы, ламинация.',
+      'Делаем всё! Фото на документы, печать любых форматов, дизайн, сувениры.',
+      'Услуг много: от простой распечатки до больших баннеров и фотокниг.'
+    ],
+    'delivery_inquiry' => [
+      'Доставляем по Сосновому Бору: центр бесплатно, окраины 150-300₽.',
+      'Есть доставка! По городу недорого, по России Почтой.',
+      'Привезем! В центре бесплатно, на окраины за небольшую доплату.'
+    ],
+    'help_request' => [
+      'С удовольствием помогу! Спрашивайте что интересует.',
+      'Конечно помогу! У меня 40 лет опыта в печатном деле.',
+      'Подскажу всё что знаю! Задавайте вопросы.'
+    ],
+    'technical_inquiry' => [
+      'Принимаем PDF, JPG, PNG, AI, PSD. Лучше PDF в CMYK, 300 dpi.',
+      'Файлы любые! Но для качества рекомендуем PDF, 300 dpi, с вылетами.',
+      'Форматы разные принимаем, но проверим качество перед печатью.'
+    ],
+    'complaint' => [
+      'Очень извиняюсь! Расскажите что не так, исправим обязательно.',
+      'Простите! Всегда стараемся работать качественно. Что случилось?',
+      'Жаль что так получилось. Звоните +7 (952) 200-39-90, разберемся!'
+    ],
+    'compliment' => [
+      'Спасибо большое! Очень приятно слышать!',
+      'Благодарю! Стараемся для клиентов!',
+      'Спасибо за добрые слова! Всегда рады помочь!'
+    ],
+    'rude' => [
+      'Давайте общаться культурно. Чем могу помочь по делу?',
+      'Прошу вас быть вежливее. Готов помочь с печатными услугами.',
+      'Не нужно грубить. Лучше расскажите что вам нужно.'
+    ],
+    'general' => [
+      'Интересный вопрос! Не совсем понял что именно нужно. Уточните пожалуйста.',
+      'Хм, а можете поподробнее? Я помогу чем смогу!',
+      'Не совсем понятно что вы имеете в виду. Можете объяснить?'
+    ]
+  ];
+
+  $intentResponses = $responses[$intent] ?? $responses['general'];
+  return getRandomFromArray($intentResponses);
+}
+
+/* УЛУЧШЕНИЕ ОТВЕТА */
+function enhanceResponse($response, $intent, $userType) {
+  // Добавляем контактную информацию для важных запросов
+  if (in_array($intent, ['price_inquiry', 'service_inquiry', 'delivery_inquiry'])) {
+    $contacts = [
+      'Звоните: +7 (952) 200-39-90',
+      'WhatsApp/Telegram: +7 (952) 200-39-90', 
+      'Адрес: Красных Фортов, 49а',
+      'Работаем: Пн-Пт 10:00-20:00, Сб-Вс 11:00-18:00'
+    ];
+
+    if ($userType !== 'elderly') {
+      $response .= '\n\n' . getRandomFromArray($contacts);
+    }
+  }
+
+  // Добавляем призыв к действию
+  if (in_array($intent, ['price_inquiry', 'service_inquiry'])) {
+    $cta = [
+      'Заказывайте прямо на сайте!',
+      'Можем сделать расчет прямо сейчас!',
+      'Приходите или звоните!',
+      'Всегда рады помочь!'
+    ];
+
+    if (rand(0, 1)) {
+      $response .= ' ' . getRandomFromArray($cta);
+    }
+  }
+
+  return $response;
+}
+
+/* ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ */
+function getRandomFromArray($array) {
+  return is_array($array) ? $array[array_rand($array)] : $array;
+}
+
+function updateAIStats($field, $value = 1) {
+  global $aiStatsFile;
+
+  $stats = json_decode(@file_get_contents($aiStatsFile), true) ?: [];
+
+  if (isset($stats[$field])) {
+    if ($field === 'user_satisfaction') {
+      // Для рейтинга считаем среднее
+      $stats['user_satisfaction'] = ($stats['user_satisfaction'] + $value) / 2;
+    } else {
+      $stats[$field] += $value;
+    }
+  } else {
+    $stats[$field] = $value;
+  }
+
+  file_put_contents($aiStatsFile, json_encode($stats, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+}
+
+/* ОБУЧЕНИЕ ИИ */
+function trainAIFromChat($userMessage, $aiResponse) {
+  global $aiTrainingFile;
+
+  $training = json_decode(@file_get_contents($aiTrainingFile), true) ?: [];
+
+  // Добавляем новый диалог
+  $training['conversations'][] = [
+    'timestamp' => date('Y-m-d H:i:s'),
+    'user_message' => $userMessage,
+    'ai_response' => $aiResponse,
+    'feedback' => null,
+    'context' => [detectUserIntent($userMessage)]
+  ];
+
+  // Сохраняем только последние 1000 диалогов
+  if (count($training['conversations']) > 1000) {
+    $training['conversations'] = array_slice($training['conversations'], -1000);
+  }
+
+  // Обновляем паттерны обучения
+  $keywords = extractKeywords($userMessage);
+  foreach ($keywords as $keyword) {
+    if (!isset($training['learning_patterns'][$keyword])) {
+      $training['learning_patterns'][$keyword] = [];
+    }
+    $training['learning_patterns'][$keyword][] = $aiResponse;
+
+    // Оставляем только последние 5 ответов на каждый паттерн
+    if (count($training['learning_patterns'][$keyword]) > 5) {
+      $training['learning_patterns'][$keyword] = array_slice($training['learning_patterns'][$keyword], -5);
+    }
+  }
+
+  file_put_contents($aiTrainingFile, json_encode($training, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+  updateAIStats('learning_events');
+}
+
+function extractKeywords($text) {
+  $text = mb_strtolower(normalizeCasualSpeech($text));
+  $words = explode(' ', $text);
+
+  // Стоп-слова
+  $stopWords = ['и', 'в', 'на', 'с', 'по', 'для', 'как', 'что', 'это', 'но', 'а', 'или', 'да', 'нет', 'то', 'не', 'же', 'бы', 'от', 'за', 'из'];
+  $keywords = array_diff($words, $stopWords);
+
+  // Только значимые слова
+  $keywords = array_filter($keywords, function($word) {
+    return mb_strlen($word) > 2 && !is_numeric($word);
+  });
+
+  return array_values(array_unique($keywords));
+}
+
+/* Config */
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+$siteURL = $scheme.$host;
+
+$defaultConfig = [
+  'brand'         => 'Копировальный фотоцентр ПРИНТСС',
+  'slogan'        => 'Печать в Сосновом Бору — ул. Красных Фортов, 49 (рядом с OZON и Саша Суши)',
+  'hero'          => 'Фото на документы — 5 минут (электронный вид бесплатно)',
+  'phone_display' => '+7 (952) 200-39-90',
+  'phone_raw'     => '+79522003990',
+  'email_to'      => 'artcopy78@bk.ru',
+  'email_from'    => 'noreply@'.preg_replace('~^www\.~','',$host),
+  'email_cc'      => '',
+  'email_bcc'     => '',
+  'email_reply'   => '',
+  'address'       => 'Россия, Ленинградская обл., Сосновый Бор, ул. Красных Фортов, 49',
+  'workhours'     => ['Пн–Пт 10:00–20:00', 'Сб–Вс 11:00–18:00'],
+  'site'          => $siteURL,
+  'logo'          => '',
+  'hero_mode'     => 'svg',
+  'hero_image'    => '',
+  'catalog_desc'  => 'Каталог услуг нашей типографии и фотоцентра. Быстро, рядом, по-честным ценам.',
+  'homepage_features' => [
+    'fast_photo' => true,
+    'online_payment' => true,
+    'delivery' => true,
+    'photo_constructor' => true
+  ],
+  'seo' => [
+    'title'       => 'Копировальный фотоцентр ПРИНТСС — типография | Фото 5 минут',
+    'description' => 'Типография и фотоцентр: визитки, баннеры, листовки, фото на документы 5 минут. Красных Фортов, 49. Тел. +7 (952) 200-39-90',
+    'keywords'    => 'печать, типография, фотоцентр, визитки, баннеры, фото на документы, Сосновый Бор',
+    'og_image'    => '',
+    'sitemap_enable' => true,
+  ],
+  'business' => [
+    'show_requisites' => true,
+    'show_payment_icons' => true,
+    'legal_name' => 'ИП Гурбанова Галина Александровна',
+    'inn' => '',
+    'ogrn' => '',
+    'bank' => '',
+    'bik' => '',
+    'account' => '',
+  ],
+  'yukassa' => [
+    'enabled'  => false,
+    'shop_id'  => '',
+    'secret_key' => '',
+    'test_mode' => true,
+    'return_url' => $siteURL . '/oplata.php',
+    'services' => [
+      'products' => true,
+      'photo_constructor' => true,
+      'regular_orders' => false
+    ]
+  ],
+  'theme' => [
+    'mode'         => 'light',
+    'bg'           => '#f3f7ff',
+    'text'         => '#0e1220',
+    'muted'        => '#5c6b84',
+    'brand'        => '#FF8A00',
+    'accent'       => '#2D5BFF',
+    'card_opacity' => 0.65,
+    'blur'         => 12,
+    'radius'       => 16,
+    'shadow'       => 0.12,
+    'container'    => 1200
+  ],
+  'telegram'      => [
+    'enabled' => true,
+    'token'   => '8385005974:AAHhQkvdKP5LJSbSI-pge_TGefgcYDLTBZw',
+    'chat'    => ''
+  ],
+  'smtp' => [
+    'enabled' => true,
+    'host'    => 'smtp.mail.ru',
+    'port'    => 465,
+    'secure'  => 'ssl',
+    'user'    => 'artcopy78@bk.ru',
+    'pass'    => ''
+  ],
+  'admin_pass' => 'printss49',
+  'features' => [
+    'reviews_enabled' => true,
+    'callback_widget' => true,
+    'price_alerts' => true,
+    'loyalty_program' => false,
+  ],
+  'social' => [
+    'vk' => '',
+    'instagram' => '',
+    'youtube' => '',
+    'whatsapp' => '+79522003990',
+    'telegram_channel' => '',
+  ]
+];
+
+if (!file_exists($configFile)) @file_put_contents($configFile, json_encode($defaultConfig, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+$cfg = json_decode(@file_get_contents($configFile), true);
+if (!is_array($cfg)) $cfg = $defaultConfig;
+$cfg = array_replace_recursive($defaultConfig, $cfg);
+
+/* Helpers */
+function esc($s){ return htmlspecialchars((string)$s, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
+function sanitize_text($s){ return trim(filter_var($s, FILTER_SANITIZE_FULL_SPECIAL_CHARS)); }
+function sanitize_hex($s){ $s=trim((string)$s); if($s==='') return ''; if($s[0]!=='#') $s='#'.$s; if(!preg_match('~^#[0-9a-fA-F]{3,8}$~',$s)) return '#000000'; return $s; }
+function clamp_float($v,$min,$max,$def){ $v=(float)$v; if(!is_finite($v)) return $def; return max($min, min($max, $v)); }
+function clamp_int($v,$min,$max,$def){ $v=(int)$v; if(!is_finite($v)) return $def; return max($min, min($max, $v)); }
+function log_order($path, $data){
+  @file_put_contents($path, '['.date('Y-m-d H:i:s').'] '.json_encode($data, JSON_UNESCAPED_UNICODE).PHP_EOL, FILE_APPEND);
+}
+function log_chat($path, $data){
+  @file_put_contents($path, '['.date('Y-m-d H:i:s').'] '.json_encode($data, JSON_UNESCAPED_UNICODE).PHP_EOL, FILE_APPEND);
+}
+function save_upload_general($field, $uploadsDir, $allowExt){
+  if (!isset($_FILES[$field]) || !is_uploaded_file($_FILES[$field]['tmp_name'])) return null;
+  $name = preg_replace('~[^a-zA-Z0-9_\.-]+~u','-', $_FILES[$field]['name']);
+  $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+  if (!in_array($ext, $allowExt)) throw new Exception('Недопустимый формат: '.esc($ext));
+  if ($_FILES[$field]['size'] > 100*1024*1024) throw new Exception('Файл слишком большой (макс. 100 МБ).');
+  $newName = date('Ymd-His').'-'.bin2hex(random_bytes(3)).'-'.$name;
+  $dest = $uploadsDir.'/'.$newName;
+  if (!move_uploaded_file($_FILES[$field]['tmp_name'], $dest)) throw new Exception('Не удалось сохранить файл.');
+  return $newName;
+}
+function save_upload_order($field, $uploadsDir){
+  $allowed = ['jpg','jpeg','png','pdf','svg','tif','tiff','ai','psd','cdr','eps','zip','rar','doc','docx','xls','xlsx','ppt','pptx'];
+  return save_upload_general($field, $uploadsDir, $allowed);
+}
+function save_upload_image($field, $uploadsDir){
+  $allowed = ['jpg','jpeg','png','webp','svg'];
+  return save_upload_general($field, $uploadsDir, $allowed);
+}
+
+/* Email helpers */
+function parse_emails($s){
+  $s = str_replace([';','\n','\r'],',',$s);
+  $parts = array_filter(array_map('trim', explode(',', (string)$s)));
+  $out = [];
+  foreach($parts as $p){
+    if (filter_var($p, FILTER_VALIDATE_EMAIL)) $out[] = $p;
+  }
+  return array_values(array_unique($out));
+}
+
+function email_headers($fromName, $from, $reply=null, $cc=null, $bcc=null){
+  $h  = 'MIME-Version: 1.0\r\n';
+  $h .= 'Content-Type: text/plain; charset=UTF-8\r\n';
+  $h .= 'From: '.$fromName.' <'.$from.'>\r\n';
+  if ($reply) $h .= 'Reply-To: '.$reply.'\r\n';
+  if ($cc){
+    $ccs = is_array($cc) ? implode(', ',$cc) : $cc;
+    if($ccs) $h .= 'Cc: '.$ccs.'\r\n';
+  }
+  if ($bcc){
+    $bccs = is_array($bcc) ? implode(', ',$bcc) : $bcc;
+    if($bccs) $h .= 'Bcc: '.$bccs.'\r\n';
+  }
+  $h .= 'X-Priority: 1\r\nX-Mailer: SmartPrint\r\n';
+  return $h;
+}
+
+function email_send_mail($to,$subj,$body,$fromName,$from,$reply=null,$cc=null,$bcc=null){
+  $h = email_headers($fromName,$from,$reply,$cc,$bcc);
+  $toStr = is_array($to) ? implode(', ',$to) : $to;
+  return @mail($toStr, '=?UTF-8?B?'.base64_encode($subj).'?=', $body, $h);
+}
+
+function smtp_cmd($fp,$cmd,$expect=null){
+  if ($cmd !== null) fwrite($fp, $cmd.'\r\n');
+  $resp=''; while($line=fgets($fp, 515)){ $resp.=$line; if(isset($line[3])&&$line[3]===' ') break; }
+  if ($expect && strpos($resp,(string)$expect)!==0) throw new Exception('SMTP error: expected '.$expect.', got: '.$resp);
+  return $resp;
+}
+
+function email_send_smtp($to,$subj,$body,$fromName,$from,$smtp,$reply=null,$cc=null,$bcc=null){
+  $host=$smtp['host']; $port=(int)$smtp['port']; $secure=strtolower($smtp['secure']??'ssl');
+  $ctx=stream_context_create(['ssl'=>['verify_peer'=>false,'verify_peer_name'=>false]]);
+  $endpoint=(($secure==='ssl')?'ssl://':'tcp://').$host.':'.$port;
+  $fp=@stream_socket_client($endpoint,$errno,$errstr,15,STREAM_CLIENT_CONNECT,$ctx);
+  if(!$fp) throw new Exception('SMTP connect failed: '.$errstr);
+  stream_set_timeout($fp,15);
+  smtp_cmd($fp,null,220);
+  smtp_cmd($fp,'EHLO localhost',250);
+  if($secure==='tls'){ smtp_cmd($fp,'STARTTLS',220); if(!stream_socket_enable_crypto($fp,true,STREAM_CRYPTO_METHOD_TLS_CLIENT)) throw new Exception('STARTTLS failed'); smtp_cmd($fp,'EHLO localhost',250); }
+  if (!empty($smtp['user'])){ smtp_cmd($fp,'AUTH LOGIN',334); smtp_cmd($fp,base64_encode($smtp['user']),334); smtp_cmd($fp,base64_encode($smtp['pass']),235); }
+  smtp_cmd($fp,'MAIL FROM:<'.$from.'>',250);
+  $rcpts = [];
+  foreach ((array)$to as $rcpt) $rcpts[]=$rcpt;
+  foreach ((array)$cc as $rcpt) $rcpts[]=$rcpt;
+  foreach ((array)$bcc as $rcpt) $rcpts[]=$rcpt;
+  $rcpts = array_values(array_unique(array_filter($rcpts)));
+  foreach ($rcpts as $rcpt) smtp_cmd($fp,'RCPT TO:<'.$rcpt.'>',250);
+  smtp_cmd($fp,'DATA',354);
+  $data  = email_headers($fromName,$from,$reply,$cc,$bcc);
+  $allToHeader = array_values(array_unique(array_merge((array)$to,(array)$cc)));
+  $data .= 'To: <'.(implode(', ',$allToHeader)).'>\r\n';
+  $data .= 'Subject: =?UTF-8?B?'.base64_encode($subj).'?=\r\n\r\n'.$body.'\r\n.\r\n';
+  fwrite($fp,$data);
+  $r=fgets($fp,515); if (strpos($r,'250')!==0) throw new Exception('SMTP DATA not accepted: '.$r);
+  smtp_cmd($fp,'QUIT',221); fclose($fp); return true;
+}
+
+function send_email_all($cfg,$subject,$body){
+  $to = parse_emails($cfg['email_to']);
+  if (empty($to)) {
+    $to = [$cfg['email_to']];
+  }
+  $cc = parse_emails($cfg['email_cc'] ?? '');
+  $bcc= parse_emails($cfg['email_bcc'] ?? '');
+  $reply = trim($cfg['email_reply'] ?? '') ?: null;
+  $from = $cfg['email_from'];
+  $ok=false; $errs=[];
+
+  if (!empty($cfg['smtp']['enabled'])){
+    try{
+      email_send_smtp($to,$subject,$body,'SmartPrint',$from,$cfg['smtp'],$reply,$cc,$bcc);
+      $ok=true;
+    } catch(Throwable $e){
+      $errs[]='SMTP: '.$e->getMessage();
+    }
+  }
+
+  if(!$ok){
+    $mailResult = email_send_mail($to,$subject,$body,'SmartPrint',$from,$reply,$cc,$bcc);
+    if($mailResult) {
+      $ok = true;
+    } else {
+      $errs[]='mail(): failed to send';
+    }
+  }
+
+  return [$ok,$errs];
+}
+
+/* Telegram API */
+function tg_api($token,$method,$params=[],$multipart=false){
+  $url='https://api.telegram.org/bot'.$token.'/'.$method;
+  $ch=curl_init($url);
+  curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
+  curl_setopt($ch,CURLOPT_CONNECTTIMEOUT,10);
+  curl_setopt($ch,CURLOPT_TIMEOUT,20);
+  if($multipart){ curl_setopt($ch,CURLOPT_POSTFIELDS,$params); }
+  else{ curl_setopt($ch,CURLOPT_POSTFIELDS,http_build_query($params)); }
+  $resp=curl_exec($ch); $err=curl_error($ch); curl_close($ch);
+  if($err) throw new Exception('Telegram CURL: '.$err);
+  $j=json_decode($resp,true);
+  if(!$j || empty($j['ok'])) throw new Exception('Telegram API: '.$resp);
+  return $j['result'] ?? true;
+}
+
+function tg_send_message_cfg($cfg,$text){
+  if(empty($cfg['telegram']['enabled'])) return [false,'disabled'];
+  $token=$cfg['telegram']['token']??''; $chat=$cfg['telegram']['chat']??'';
+  if(!$token || !$chat) return [false,'no token/chat'];
+  try{ tg_api($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'parse_mode'=>'HTML','disable_web_page_preview'=>true]); return [true,null]; }
+  catch(Throwable $e){ return [false,$e->getMessage()]; }
+}
+
+function tg_send_file_cfg($cfg,$file,$caption=''){
+  if(empty($cfg['telegram']['enabled'])) return [false,'disabled'];
+  $token=$cfg['telegram']['token']??''; $chat=$cfg['telegram']['chat']??'';
+  if(!$token || !$chat) return [false,'no token/chat'];
+  if(!is_file($file)) return [false,'file not found'];
+  try{
+    tg_api($token,'sendDocument',[
+      'chat_id'=>$chat,
+      'caption'=>$caption,
+      'document'=>new CURLFile($file, mime_content_type($file)?:'application/octet-stream', basename($file))
+    ], true);
+    return [true,null];
+  }catch(Throwable $e){ return [false,$e->getMessage()]; }
+}
+
+/* ЮКасса Integration */
+function yukassa_create_payment($cfg, $amount, $description, $order_id, $return_url = null){
+  if(empty($cfg['yukassa']['enabled'])) return [false, 'Payments disabled'];
+
+  $shop_id = $cfg['yukassa']['shop_id'];
+  $secret_key = $cfg['yukassa']['secret_key'];
+  if (!$return_url) $return_url = $cfg['yukassa']['return_url'];
+
+  if(!$shop_id || !$secret_key) return [false, 'Missing shop_id or secret_key'];
+
+  $url = 'https://api.yookassa.ru/v3/payments';
+
+  $data = [
+    'amount' => ['value' => number_format($amount, 2, '.', ''), 'currency' => 'RUB'],
+    'confirmation' => ['type' => 'redirect', 'return_url' => $return_url],
+    'description' => $description,
+    'metadata' => ['order_id' => (string)$order_id],
+    'capture' => true
+  ];
+
+  $ch = curl_init($url);
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  curl_setopt($ch, CURLOPT_POST, true);
+  curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+  curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Content-Type: application/json',
+    'Idempotence-Key: ' . uniqid(),
+    'Authorization: Basic ' . base64_encode($shop_id . ':' . $secret_key)
+  ]);
+
+  $result = curl_exec($ch);
+  $error = curl_error($ch);
+  curl_close($ch);
+
+  if($error) return [false, 'CURL error: ' . $error];
+
+  $response = json_decode($result, true);
+  if(!$response || !isset($response['confirmation']['confirmation_url'])) {
+    return [false, 'Invalid response: ' . $result];
+  }
+
+  return [true, $response];
+}
+
+function yukassa_check_payment($cfg, $payment_id){
+  if(empty($cfg['yukassa']['enabled'])) return [false, 'Payments disabled'];
+
+  $shop_id = $cfg['yukassa']['shop_id'];
+  $secret_key = $cfg['yukassa']['secret_key'];
+
+  if(!$shop_id || !$secret_key) return [false, 'Missing credentials'];
+
+  $url = 'https://api.yookassa.ru/v3/payments/'.$payment_id;
+
+  $ch = curl_init($url);
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Authorization: Basic ' . base64_encode($shop_id . ':' . $secret_key)
+  ]);
+
+  $result = curl_exec($ch);
+  $error = curl_error($ch);
+  curl_close($ch);
+
+  if($error) return [false, 'CURL error: ' . $error];
+
+  $response = json_decode($result, true);
+  if(!$response) return [false, 'Invalid response: ' . $result];
+
+  return [true, $response];
+}
+
+/* Sitemap generation */
+function generate_sitemap($cfg) {
+  $sitemap = '<?xml version=\'1.0\' encoding=\'UTF-8\'?' . '>' . '\n';
+  $sitemap .= '<urlset xmlns=\'http://www.sitemaps.org/schemas/sitemap/0.9\'>' . '\n';
+
+  $sitemap .= '<url><loc>' . esc($cfg['site']) . '</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>' . '\n';
+
+  $sections = ['catalog', 'calc', 'services', 'how', 'contacts', 'reviews', 'portfolio', 'faq'];
+  foreach($sections as $section) {
+    $sitemap .= '<url><loc>' . esc($cfg['site']) . '/#' . $section . '</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>' . '\n';
+  }
+
+  $sitemap .= '</urlset>';
+  return $sitemap;
+}
+
+/* API routes */
+function require_admin($cfg){
+  if(empty($_SESSION['is_admin'])){ header('Location: ?admin=1&login=1'); exit; }
+}
+
+// Sitemap route
+if (isset($_GET['sitemap'])) {
+  header('Content-Type: application/xml; charset=utf-8');
+  echo generate_sitemap($cfg);
+  exit;
+}
+
+// Обратный звонок
+if (($_POST['mode']??'')==='callback') {
+  header('Content-Type: application/json; charset=utf-8');
+  try{
+    $name = sanitize_text($_POST['name']??'');
+    $phone = sanitize_text($_POST['phone']??'');
+    $time = sanitize_text($_POST['time']??'');
+
+    if($name==='' || $phone==='') throw new Exception('Укажите имя и телефон.');
+
+    $callback = [
+      'ts'=>date('Y-m-d H:i:s'),
+      'name'=>$name,
+      'phone'=>$phone,
+      'preferred_time'=>$time,
+      'ip'=>$_SERVER['REMOTE_ADDR']??'',
+      'type'=>'callback'
+    ];
+    log_order($ordersLog, $callback);
+
+    $body = "Заявка на обратный звонок с сайта {$cfg['brand']}\n\n"
+          . "Имя: $name\nТелефон: $phone\n"
+          . ($time ? "Удобное время: $time\n" : '')
+          . "IP: {$callback['ip']}\n";
+
+    [$mailOk,$mailErrs] = send_email_all($cfg, 'Обратный звонок — ' . $name, $body);
+
+    $tgMsg = '📞 <b>Обратный звонок</b>'.'\n'.'👤 '.esc($name).'\n'.'📱 '.esc($phone).'\n'
+           . ($time ? '🕐 '.esc($time).'\n' : '')
+           . "🌐 $siteURL";
+    [$tgOk,$tgErr] = tg_send_message_cfg($cfg, $tgMsg);
+
+    echo json_encode([
+      'ok'=>true,
+      'message'=>'Заявка принята. Перезвоним в течение 15 минут!',
+      'emailOk'=>$mailOk,
+      'tgOk'=>$tgOk
+    ]);
+    exit;
+  }catch(Exception $e){
+    echo json_encode(['ok'=>false,'message'=>$e->getMessage()]);
+    exit;
+  }
+}
+
+if ($_SERVER['REQUEST_METHOD']==='POST'){
+  /* Order */
+  if (($_POST['mode']??'')==='order'){
+    header('Content-Type: application/json; charset=utf-8');
+    try{
+      $name = sanitize_text($_POST['name']??'');
+      $phone= sanitize_text($_POST['phone']??'');
+      $service=sanitize_text($_POST['service']??'');
+      $price= sanitize_text($_POST['price']??'');
+      $comment=sanitize_text($_POST['comment']??'');
+      $calc = sanitize_text($_POST['calc']??'');
+      $payment_method = sanitize_text($_POST['payment_method']??'offline');
+
+      if($name===''||$phone===''||$service==='') throw new Exception('Укажите имя, телефон и услугу.');
+      $saved=null; if(!empty($_FILES['file']['name'])) $saved=save_upload_order('file',$uploadsDir);
+
+      $order_id = 'order_'.time().'_'.rand(1000,9999);
+
+      $order = [
+        'id'=>$order_id,
+        'ts'=>date('Y-m-d H:i:s'),'name'=>$name,'phone'=>$phone,'service'=>$service,'price'=>$price,'comment'=>$comment,'calc'=>$calc,
+        'file'=>$saved?('uploads/'.$saved):null,'ip'=>$_SERVER['REMOTE_ADDR']??'','ua'=>$_SERVER['HTTP_USER_AGENT']??'',
+        'payment_method'=>$payment_method,'type'=>'service','status'=>'new'
+      ];
+      log_order($ordersLog,$order);
+
+      $body = "Новая заявка с сайта {$cfg['brand']}\n\n"
+            . "ID заказа: $order_id\n"
+            . "Имя: $name\nТелефон: $phone\nУслуга: $service\n"
+            . ($price?"Ориент. цена: $price\n":'')
+            . ($calc?"Калькулятор: $calc\n":'')
+            . ($comment?"Комментарий: $comment\n":'')
+            . ($payment_method?"Способ оплаты: $payment_method\n":'')
+            . ($saved?"Файл: $siteURL/uploads/$saved\n":'')
+            . "IP: {$order['ip']}\n";
+      [$mailOk,$mailErrs]=send_email_all($cfg,'Заявка — '.$service,$body);
+
+      $tgMsg = '🆕 <b>'.esc($service).'</b>'.'\n'.'👤 '.esc($name).'\n'.'📞 '.esc($phone).'\n'
+             . ($price?'💰 '.esc($price).'\n':'')
+             . ($calc?'📐 '.esc($calc).'\n':'')
+             . ($comment?'💬 '.esc($comment).'\n':'')
+             . ($payment_method?'💳 Оплата: '.esc($payment_method).'\n':'')
+             . ($saved?"📎 Файл: $siteURL/uploads/$saved\n":'')
+             . "🆔 $order_id\n"
+             . "🌐 $siteURL";
+      [$tgOk,$tgErr]=tg_send_message_cfg($cfg,$tgMsg);
+      if($saved) @tg_send_file_cfg($cfg, $BASE.'/uploads/'.basename($saved), 'Макет к заявке');
+
+      $response = ['ok'=>true,'emailOk'=>$mailOk,'tgOk'=>$tgOk,'order_id'=>$order_id];
+
+      if($payment_method === 'online' && $price && preg_match('/(\\d+)/', $price, $matches)) {
+        $amount = (float)$matches[1];
+        if($amount > 0) {
+          [$payOk, $payResult] = yukassa_create_payment($cfg, $amount, $service, $order_id);
+          if($payOk) {
+            $response['payment'] = true;
+            $response['payment_url'] = $payResult['confirmation']['confirmation_url'];
+            $response['payment_id'] = $payResult['id'];
+            $response['message'] = 'Заявка отправлена. Переходим к оплате...';
+          } else {
+            $response['message'] = 'Заявка отправлена. Ошибка создания платежа: ' . $payResult;
+          }
+        }
+      } else {
+        $response['message'] = 'Заявка отправлена. Мы свяжемся с вами.';
+        if(!$mailOk) $response['message'] .= ' (email недоступен — продублировали в Telegram/журнал)';
+      }
+
+      echo json_encode($response); exit;
+    }catch(Exception $e){
+      echo json_encode(['ok'=>false,'message'=>$e->getMessage()]); exit;
+    }
+  }
+
+  // Заказ корзины товаров
+  if (($_POST['mode']??'')==='cart_order'){
+    header('Content-Type: application/json; charset=utf-8');
+    try{
+      $name = sanitize_text($_POST['name']??'');
+      $phone= sanitize_text($_POST['phone']??'');
+      $comment=sanitize_text($_POST['comment']??'');
+      $cart = json_decode($_POST['cart']??'[]', true);
+      $payment_method = sanitize_text($_POST['payment_method']??'offline');
+
+      if($name===''||$phone==='') throw new Exception('Укажите имя и телефон.');
+      if(empty($cart)) throw new Exception('Корзина пуста.');
+
+      $products = json_decode(@file_get_contents($BASE.'/products.json'), true) ?? [];
+      $totalPrice = 0;
+      $orderItems = [];
+
+      foreach($cart as $item){
+        $product = null;
+        foreach($products as $p){
+          if($p['id'] == $item['id'] && $p['enabled']){
+            $product = $p;
+            break;
+          }
+        }
+        if(!$product) continue;
+        if($product['stock'] < $item['quantity']) throw new Exception('Недостаточно товара на складе: '.$product['name']);
+
+        $itemTotal = $product['price'] * $item['quantity'];
+        $totalPrice += $itemTotal;
+        $orderItems[] = [
+          'product_id'=>$product['id'],
+          'name'=>$product['name'],
+          'price'=>$product['price'],
+          'quantity'=>$item['quantity'],
+          'total'=>$itemTotal
+        ];
+      }
+
+      $order_id = 'cart_'.time().'_'.rand(1000,9999);
+
+      $order = [
+        'id'=>$order_id,
+        'type'=>'cart',
+        'ts'=>date('Y-m-d H:i:s'),
+        'items'=>$orderItems,
+        'total_price'=>$totalPrice,
+        'name'=>$name,
+        'phone'=>$phone,
+        'comment'=>$comment,
+        'payment_method'=>$payment_method,
+        'ip'=>$_SERVER['REMOTE_ADDR']??'',
+        'status'=>'new'
+      ];
+
+      log_order($ordersLog, $order);
+
+      $emailBody = "Заказ товаров с сайта {$cfg['brand']}\n\nID заказа: $order_id\n\n";
+      foreach($orderItems as $item){
+        $emailBody .= "• {$item['name']} - {$item['price']} ₽ × {$item['quantity']} шт = {$item['total']} ₽\n";
+      }
+      $emailBody .= "\nИтого: $totalPrice ₽\n\n";
+      $emailBody .= "Покупатель: $name\n";
+      $emailBody .= "Телефон: $phone\n";
+      if($comment) $emailBody .= "Комментарий: $comment\n";
+      $emailBody .= "Способ оплаты: ".($payment_method==='online'?'Онлайн':'При получении')."\n";
+      $emailBody .= "IP: {$order['ip']}\n\n";
+      $emailBody .= "Обработайте заказ в админке!";
+
+      [$mailOk,$mailErrs]=send_email_all($cfg,'Заказ корзины #'.$order_id,$emailBody);
+
+      $tgMsg = '🛒 <b>Заказ товаров #'.esc($order_id).'</b>'.'\n\n';
+      foreach($orderItems as $item){
+        $tgMsg .= '• '.esc($item['name']).' × '.$item['quantity'].' = '.number_format($item['total']).' ₽'.'\n';
+      }
+      $tgMsg .= '\n'.'💰 <b>Итого: '.number_format($totalPrice).' ₽</b>'.'\n\n';
+      $tgMsg .= '👤 '.esc($name).'\n'.'📞 '.esc($phone).'\n';
+      if($comment) $tgMsg .= '💬 '.esc($comment).'\n';
+      $tgMsg .= '💳 '.($payment_method==='online'?'Онлайн оплата':'Оплата при получении').'\n';
+      $tgMsg .= "🌐 $siteURL";
+
+      [$tgOk,$tgErr]=tg_send_message_cfg($cfg,$tgMsg);
+
+      $response = ['ok'=>true,'emailOk'=>$mailOk,'tgOk'=>$tgOk,'order_id'=>$order_id];
+
+      if($payment_method === 'online' && $totalPrice > 0) {
+        [$payOk, $payResult] = yukassa_create_payment($cfg, $totalPrice, "Заказ товаров #$order_id", $order_id);
+        if($payOk) {
+          $response['payment'] = true;
+          $response['payment_url'] = $payResult['confirmation']['confirmation_url'];
+          $response['payment_id'] = $payResult['id'];
+          $response['message'] = 'Заказ принят. Переходим к оплате...';
+        } else {
+          $response['message'] = 'Заказ принят. Ошибка создания платежа: ' . $payResult;
+        }
+      } else {
+        $response['message'] = 'Заказ принят! Мы свяжемся с вами для подтверждения.';
+      }
+
+      echo json_encode($response);
+      exit;
+
+    }catch(Exception $e){
+      echo json_encode(['ok'=>false,'message'=>$e->getMessage()]);
+      exit;
+    }
+  }
+
+  // Отзывы
+  if (($_POST['mode']??'')==='review'){
+    header('Content-Type: application/json; charset=utf-8');
+    try{
+      $name = sanitize_text($_POST['name']??'');
+      $rating = (int)($_POST['rating']??0);
+      $text = sanitize_text($_POST['text']??'');
+
+      if($name==='' || $rating < 1 || $rating > 5 || $text==='') {
+        throw new Exception('Заполните все поля и поставьте оценку.');
+      }
+
+      $review = [
+        'ts'=>date('Y-m-d H:i:s'),
+        'name'=>$name,
+        'rating'=>$rating,
+        'text'=>$text,
+        'ip'=>$_SERVER['REMOTE_ADDR']??'',
+        'type'=>'review',
+        'status'=>'new'
+      ];
+      log_order($ordersLog, $review);
+
+      $body = "Новый отзыв с сайта {$cfg['brand']}\n\n"
+            . "Имя: $name\nОценка: $rating/5\nТекст: $text\n";
+
+      [$mailOk,$mailErrs] = send_email_all($cfg, 'Новый отзыв — ' . $rating . '/5', $body);
+
+      $stars = str_repeat('⭐', $rating);
+      $tgMsg = '📝 <b>Новый отзыв</b>'.'\n'.'👤 '.esc($name).'\n'.$stars.' ('.$rating.'/5)'.'\n'."'".esc($text)."'";
+      [$tgOk,$tgErr] = tg_send_message_cfg($cfg, $tgMsg);
+
+      echo json_encode([
+        'ok'=>true,
+        'message'=>'Спасибо за отзыв! Он появится после модерации.',
+        'emailOk'=>$mailOk,
+        'tgOk'=>$tgOk
+      ]);
+      exit;
+    }catch(Exception $e){
+      echo json_encode(['ok'=>false,'message'=>$e->getMessage()]);
+      exit;
+    }
+  }
+
+  if (isset($_POST['admin_login'])){
+    $pass=$_POST['password']??''; if(hash_equals($cfg['admin_pass'],$pass)){ $_SESSION['is_admin']=true; header('Location: ?admin=1'); }
+    else { header('Location: ?admin=1&login=1&err=1'); }
+    exit;
+  }
+
+  if (isset($_POST['admin_save'])){
+    require_admin($cfg);
+    $new=$cfg;
+    foreach(['brand','slogan','hero','phone_display','phone_raw','email_to','email_from','email_cc','email_bcc','email_reply','address','hero_mode','hero_image','catalog_desc'] as $f){
+      if(isset($_POST[$f])) $new[$f]=trim($_POST[$f]);
+    }
+    if(isset($_POST['workhours'])){
+      $wh=array_filter(array_map('trim', explode('\n', str_replace('\r','',$_POST['workhours']))));
+      if($wh) $new['workhours']=array_values($wh);
+    }
+    if(!empty($_POST['admin_pass'])) $new['admin_pass']=$_POST['admin_pass'];
+
+    if(isset($_POST['seo']) && is_array($_POST['seo'])){
+      $new['seo']['title'] = trim($_POST['seo']['title'] ?? $new['seo']['title']);
+      $new['seo']['description'] = trim($_POST['seo']['description'] ?? $new['seo']['description']);
+      $new['seo']['keywords'] = trim($_POST['seo']['keywords'] ?? $new['seo']['keywords']);
+      $new['seo']['og_image'] = trim($_POST['seo']['og_image'] ?? $new['seo']['og_image']);
+      $new['seo']['sitemap_enable'] = !empty($_POST['seo']['sitemap_enable']);
+    }
+
+    if(isset($_POST['business']) && is_array($_POST['business'])){
+      $new['business']['show_requisites'] = !empty($_POST['business']['show_requisites']);
+      $new['business']['show_payment_icons'] = !empty($_POST['business']['show_payment_icons']);
+      $new['business']['legal_name'] = trim($_POST['business']['legal_name'] ?? $new['business']['legal_name']);
+      $new['business']['inn'] = trim($_POST['business']['inn'] ?? $new['business']['inn']);
+      $new['business']['ogrn'] = trim($_POST['business']['ogrn'] ?? $new['business']['ogrn']);
+      $new['business']['bank'] = trim($_POST['business']['bank'] ?? $new['business']['bank']);
+      $new['business']['bik'] = trim($_POST['business']['bik'] ?? $new['business']['bik']);
+      $new['business']['account'] = trim($_POST['business']['account'] ?? $new['business']['account']);
+    }
+
+    if(isset($_POST['social']) && is_array($_POST['social'])){
+      foreach(['vk','instagram','youtube','whatsapp','telegram_channel'] as $s) {
+        $new['social'][$s] = trim($_POST['social'][$s] ?? $new['social'][$s]);
+      }
+    }
+
+    if(isset($_POST['yukassa']) && is_array($_POST['yukassa'])){
+      $new['yukassa']['enabled'] = !empty($_POST['yukassa']['enabled']);
+      $new['yukassa']['shop_id'] = trim($_POST['yukassa']['shop_id'] ?? $new['yukassa']['shop_id']);
+      $new['yukassa']['test_mode'] = !empty($_POST['yukassa']['test_mode']);
+      $new['yukassa']['return_url'] = trim($_POST['yukassa']['return_url'] ?? $new['yukassa']['return_url']);
+      if(isset($_POST['yukassa']['secret_key']) && $_POST['yukassa']['secret_key'] !== '__KEEP__') {
+        $new['yukassa']['secret_key'] = $_POST['yukassa']['secret_key'];
+      }
+
+      if(isset($_POST['yukassa']['services']) && is_array($_POST['yukassa']['services'])){
+        $new['yukassa']['services']['products'] = !empty($_POST['yukassa']['services']['products']);
+        $new['yukassa']['services']['photo_constructor'] = !empty($_POST['yukassa']['services']['photo_constructor']);
+        $new['yukassa']['services']['regular_orders'] = !empty($_POST['yukassa']['services']['regular_orders']);
+      }
+    }
+
+    $new['smtp']['enabled']=!empty($_POST['smtp_enabled']);
+    $new['smtp']['host']=trim($_POST['smtp_host']??$new['smtp']['host']);
+    $new['smtp']['port']=(int)($_POST['smtp_port']??$new['smtp']['port']);
+    $new['smtp']['secure']=in_array($_POST['smtp_secure']??'ssl',['ssl','tls','none'])?$_POST['smtp_secure']:'ssl';
+    $new['smtp']['user']=trim($_POST['smtp_user']??$new['smtp']['user']);
+    if(isset($_POST['smtp_pass']) && $_POST['smtp_pass']!=='__KEEP__') $new['smtp']['pass']=$_POST['smtp_pass'];
+
+    $new['telegram']['enabled']=!empty($_POST['tg_enabled']);
+    $new['telegram']['token']=trim($_POST['tg_token']??$new['telegram']['token']);
+    $new['telegram']['chat']=trim($_POST['tg_chat']??$new['telegram']['chat']);
+
+    $new['features']['loyalty_program'] = false;
+    $new['features']['reviews_enabled'] = !empty($_POST['features_reviews_enabled']);
+    $new['features']['callback_widget'] = !empty($_POST['features_callback_widget']);
+    $new['features']['price_alerts'] = !empty($_POST['features_price_alerts']);
+
+    if(isset($_POST['theme']) && is_array($_POST['theme'])){
+      $t=$new['theme'];
+      $t['mode']  = in_array(($_POST['theme']['mode']??'light'),['light','dark'])?$_POST['theme']['mode']:'light';
+      $t['bg']    = sanitize_hex($_POST['theme']['bg']   ?? $t['bg']);
+      $t['text']  = sanitize_hex($_POST['theme']['text'] ?? $t['text']);
+      $t['muted'] = sanitize_hex($_POST['theme']['muted']?? $t['muted']);
+      $t['brand'] = sanitize_hex($_POST['theme']['brand']?? $t['brand']);
+      $t['accent']= sanitize_hex($_POST['theme']['accent']??$t['accent']);
+      $t['card_opacity']= clamp_float($_POST['theme']['card_opacity']??$t['card_opacity'], 0.3, 1.0, 0.65);
+      $t['blur']  = clamp_int($_POST['theme']['blur']??$t['blur'], 0, 30, 12);
+      $t['radius']= clamp_int($_POST['theme']['radius']??$t['radius'], 0, 28, 16);
+      $t['shadow']= clamp_float($_POST['theme']['shadow']??$t['shadow'], 0, 0.5, 0.12);
+      $t['container']= clamp_int($_POST['theme']['container']??$t['container'], 900, 1400, 1200);
+      $new['theme']=$t;
+    }
+
+    @file_put_contents($configFile, json_encode($new, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+    header('Location: ?admin=1&saved=1'); exit;
+  }
+
+  if (isset($_POST['admin_upload'])){
+    require_admin($cfg);
+    try{
+      $what=$_POST['what']??'';
+      if($what==='logo'){
+        $fn=save_upload_image('file',$uploadsDir);
+        $cfg['logo']='/uploads/'.$fn;
+      } elseif($what==='hero'){
+        $fn=save_upload_image('file',$uploadsDir);
+        $cfg['hero_mode']='image';
+        $cfg['hero_image']='/uploads/'.$fn;
+      } else { throw new Exception('Неизвестный тип загрузки'); }
+      @file_put_contents($configFile, json_encode($cfg, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+      header('Location: ?admin=1&saved=1'); exit;
+    }catch(Exception $e){
+      header('Location: ?admin=1&err='.urlencode($e->getMessage())); exit;
+    }
+  }
+
+  if (isset($_POST['admin_test_email'])){ require_admin($cfg); [$ok,$errs]=send_email_all($cfg,'Тест SmartPrint', 'Тест с '.$cfg['site'].' '.date('Y-m-d H:i:s')); header('Location: ?admin=1&test_email='.($ok?'ok':'fail')); exit; }
+  if (isset($_POST['admin_test_tg'])){ require_admin($cfg); [$ok,$err]=tg_send_message_cfg($cfg,'Тест Telegram '.date('Y-m-d H:i:s')); header('Location: ?admin=1&test_tg='.($ok?'ok':'fail')); exit; }
+
+  if (isset($_POST['tg_delete_webhook'])){ require_admin($cfg);
+    try{ tg_api($cfg['telegram']['token'],'deleteWebhook'); header('Location: ?admin=1&tg_webhook=deleted'); }
+    catch(Throwable $e){ header('Location: ?admin=1&tg_webhook=err'); } exit;
+  }
+  if (isset($_POST['tg_get_updates'])){ require_admin($cfg);
+    $_SESSION['tg_updates'] = null;
+    try{ $res = tg_api($cfg['telegram']['token'],'getUpdates', ['timeout'=>0]); $_SESSION['tg_updates']=$res; header('Location: ?admin=1&tg_updates=ok'); }
+    catch(Throwable $e){ header('Location: ?admin=1&tg_updates=err'); }
+    exit;
+  }
+  if (isset($_POST['tg_use_chat'])){ require_admin($cfg);
+    $chat = trim($_POST['chat']??'');
+    if ($chat!==''){ $cfg['telegram']['chat']=$chat; @file_put_contents($configFile, json_encode($cfg, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT)); header('Location: ?admin=1&tg_chat=saved'); }
+    else { header('Location: ?admin=1&tg_chat=err'); }
+    exit;
+  }
+}
+
+/* Public site */
+$T = $cfg['theme'];
+$cardOpacity = is_numeric($T['card_opacity']) ? max(0.3, min(1, (float)$T['card_opacity'])) : 0.65;
+$blur = (int)$T['blur'];
+$radius = (int)$T['radius'];
+$shadow = (float)$T['shadow'];
+$container = (int)$T['container'];
+$muted = $T['muted'];
+$bg = $T['bg'];
+$text = $T['text'];
+$brandCol = $T['brand'];
+$accentCol = $T['accent'];
+
+$seoTitle = $cfg['seo']['title'] ?: ($cfg['brand'] . ' — типография | Фото 5 минут');
+$seoDescription = $cfg['seo']['description'] ?: ('Типография и фотоцентр: визитки, баннеры, листовки, фото на документы 5 минут. Красных Фортов, 49. Тел. ' . $cfg['phone_display']);
+$seoKeywords = $cfg['seo']['keywords'] ?: 'печать, типография, фотоцентр, визитки, баннеры, фото на документы, Сосновый Бор';
+$ogImage = $cfg['seo']['og_image'] ?: ('data:image/svg+xml;base64,' . base64_encode('<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'1200\' height=\'630\'><rect fill=\'#fff\' width=\'100%\' height=\'100%\'/><text x=\'50%\' y=\'54%\' fill=\'#000\' font-size=\'62\' font-family=\'Arial,sans-serif\' text-anchor=\'middle\'>'.$cfg['brand'].'</text></svg>'));
 ?>
-<!DOCTYPE html>
-<html lang="ru">
+<!doctype html>
+<html lang='ru'>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚀 Админ панель - АкваСбор МЕГА</title>
+  <meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
+  <title><?=esc($seoTitle)?></title>
+  <meta name='description' content='<?=esc($seoDescription)?>'>
+  <meta name='keywords' content='<?=esc($seoKeywords)?>'>
+  <meta property='og:title' content='<?=esc($cfg['brand'])?>'><meta property='og:description' content='<?=esc($cfg['hero'])?>'>
+  <meta property='og:type' content='website'><meta property='og:url' content='<?=esc($cfg['site'])?>'>
+  <meta property='og:image' content='<?=esc($ogImage)?>'>
+  <link rel='icon' href='data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27><rect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27<?=urlencode($brandCol)?>%27/><path d=%27M14 40h36v6H14zM20 18h24l6 8v14H14V26z%27 fill=%27%23000%27/></svg>'>
+  <style>
+    :root{
+      --bg: <?=esc($bg)?>;
+      --text: <?=esc($text)?>;
+      --muted: <?=esc($muted)?>;
+      --brand: <?=esc($brandCol)?>;
+      --accent: <?=esc($accentCol)?>;
+      --card: rgba(255,255,255, <?=esc(number_format($cardOpacity,2,'.',''))?>) ;
+      --glass-blur: <?=esc($blur)?>px;
+      --radius: <?=esc($radius)?>px;
+      --shadow: 0 10px 30px rgba(0,0,0, <?=esc(number_format($shadow,2,'.',''))?>) ;
+      --grad1: linear-gradient(135deg, <?=esc($brandCol)?>, #FFB14D);
+      --grad2: linear-gradient(135deg, <?=esc($accentCol)?>, #00C2FF);
+      --container: <?=esc($container)?>px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;line-height:1.5}
+    body{
+      background:
+        radial-gradient(900px 300px at 70% -10%, rgba(45,91,255,.10), transparent 60%),
+        radial-gradient(700px 280px at 20% -20%, rgba(255,138,0,.12), transparent 70%),
+        var(--bg);
+    }
+    img{max-width:100%;height:auto;display:block}
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:var(--container);margin:0 auto;padding:0 16px}
 
-    <!-- Bootstrap 5 -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    /* ОТКРЕПЛЕННАЯ ШАПКА */
+    .topbar{position:static;z-index:50;background:rgba(255,255,255,.75);backdrop-filter:blur(var(--glass-blur)) saturate(160%);border-bottom:1px solid rgba(0,0,0,.08)}
 
-    <style>
-        :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            --sidebar-width: 280px;
-        }
+    /* ТЕЛЕФОН ВЫШЕ МЕНЮ */
+    .topflex{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;flex-wrap:wrap}
 
-        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .logo{display:flex;gap:12px;align-items:center;min-width:0}
+    .logo-badge{width:44px;height:44px;border-radius:12px;background:var(--grad1);display:grid;place-items:center;color:#111;font-weight:900;flex:0 0 auto;overflow:hidden}
+    .logo-title{font-weight:800;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55vw}
+    .phone{order:3}
+    .phone a{background:var(--brand);color:#111;padding:10px 16px;border-radius:12px;font-weight:700;display:inline-block;border:2px solid rgba(0,0,0,.06);transition:all 0.2s}
+    .phone a:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(255,138,0,.3)}
 
-        body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+    /* КНОПКА МОБИЛЬНОГО МЕНЮ */
+    .menu-toggle{display:none;background:var(--brand);border:none;padding:8px 12px;border-radius:8px;color:#000;font-weight:600;cursor:pointer;order:2}
 
-        .sidebar {
-            width: var(--sidebar-width);
-            height: 100vh;
-            background: var(--primary-gradient);
-            position: fixed;
-            left: 0;
-            top: 0;
-            overflow-y: auto;
-            z-index: 1000;
-            transition: all 0.3s ease;
-        }
+    .nav{order:2;display:flex;gap:8px;flex-wrap:wrap;width:100%}
+    .nav a{color:#2c4360;padding:8px 12px;border-radius:10px;font-weight:500;transition:all 0.2s}
+    .nav a:hover{background:rgba(0,0,0,.08);color:#1a2b45}
 
-        .sidebar .logo {
-            padding: 2rem 1.5rem;
-            text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
+    /* МОБИЛЬНЫЕ АДАПТАЦИИ */
+    @media(max-width:768px){
+      .menu-toggle{display:block}
+      .nav{display:none;order:4;width:100%;background:rgba(255,255,255,.95);border-radius:12px;padding:12px;margin-top:8px;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+      .nav.show{display:flex;flex-direction:column}
+      .nav a{padding:12px 16px;text-align:center;border-radius:8px}
+      .phone{order:1;width:100%}
+      .phone a{width:100%;text-align:center}
+      .topflex{flex-direction:column}
+    }
 
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            padding: 1rem 1.5rem;
-            margin: 0.25rem 1rem;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-        }
+    .hero{padding:clamp(24px,4vw,50px) 0 30px}
+    .row{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+    .col-6{grid-column:span 6}.col-12{grid-column:span 12}
+    @media(max-width:980px){.col-6{grid-column:span 12}}
+    h1{font-size:clamp(26px,4vw,42px);line-height:1.2;margin:10px 0 14px;font-weight:800}
+    h2{font-size:clamp(22px,3.2vw,30px);margin:0 0 14px;font-weight:700}
+    p{margin:0;line-height:1.6}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid rgba(0,0,0,.08);color:#7c5b00;backdrop-filter:blur(var(--glass-blur));font-weight:600;font-size:14px}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border-radius:12px;border:1px solid rgba(0,0,0,.1);background:var(--card);color:var(--text);font-weight:600;transition:all 0.2s;white-space:nowrap;backdrop-filter:blur(var(--glass-blur));cursor:pointer;font-size:14px;text-decoration:none}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.1)}
+    .btn-primary{background:var(--grad2);border:none;color:#fff;font-weight:700}
+    .btn-primary:hover{box-shadow:0 6px 25px rgba(45,91,255,.3)}
+    .btn-brand{background:var(--grad1);color:#111;border:none;font-weight:700}
+    .btn-brand:hover{box-shadow:0 6px 25px rgba(255,138,0,.3)}
+    .btn-outline{background:rgba(255,255,255,.8);border:2px solid var(--accent);color:var(--accent);font-weight:600}
+    .btn-outline:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .badge{display:inline-block;padding:4px 10px;border-radius:999px;background:var(--card);color:#31456a;border:1px solid rgba(0,0,0,.08);font-size:13px;backdrop-filter:blur(var(--glass-blur));font-weight:500}
+    .muted{color:var(--muted)}
+    .panel{background:var(--card);border:1px solid rgba(0,0,0,.08);border-radius:var(--radius);backdrop-filter:blur(var(--glass-blur));box-shadow:var(--shadow)}
+    .hero-media{aspect-ratio:16/10;border:1px solid rgba(0,0,0,.08);border-radius:var(--radius);overflow:hidden;background:var(--card);backdrop-filter:blur(var(--glass-blur))}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    @media(max-width:1100px){.grid{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:560px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid rgba(0,0,0,.08);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;backdrop-filter:blur(var(--glass-blur));box-shadow:var(--shadow);transition:all 0.2s}
+    .card:hover{transform:translateY(-2px);box-shadow:0 12px 35px rgba(0,0,0,.12)}
+    .card-illustr{height:120px;display:grid;place-items:center;background:linear-gradient(180deg,rgba(0,0,0,.02),transparent)}
+    .card h3{margin:14px 18px 6px;font-size:clamp(16px,2.2vw,18px);font-weight:700;line-height:1.3}
+    .card small{margin:0 18px 10px;color:var(--muted);display:block;line-height:1.4;font-size:13px}
+    .card p{margin:0 18px 14px;color:#2b3f5f;font-weight:600;font-size:15px}
+    .card .actions{margin:12px 18px 18px;display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+    .card .actions .btn{padding:10px 14px;font-size:13px;font-weight:600;border-radius:10px;min-height:40px}
+    .card .actions .btn-primary{background:var(--grad2);color:#fff;border:none}
+    .card .actions .btn-outline{background:rgba(255,255,255,.9);border:1px solid rgba(45,91,255,.4);color:var(--accent);backdrop-filter:blur(8px)}
+    .card .actions .btn-outline:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .features{padding:30px 0}
+    .feature{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid rgba(0,0,0,.08);border-radius:var(--radius);padding:16px;backdrop-filter:blur(var(--glass-blur));box-shadow:var(--shadow)}
+    .steps li{margin:8px 0;line-height:1.5}
+    .cta-strip{padding:24px 0;text-align:center;background:rgba(255,255,255,.75);backdrop-filter:blur(var(--glass-blur));border-block:1px solid rgba(0,0,0,.08)}
+    .footer{margin-top:30px;padding:22px 0;border-top:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.7);backdrop-filter:blur(var(--glass-blur))}
+    .floatactions{position:fixed;right:14px;bottom:14px;z-index:60;display:flex;flex-direction:column;gap:10px}
 
-        .sidebar .nav-link:hover,
-        .sidebar .nav-link.active {
-            color: white;
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateX(5px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        }
+    /* СКРЫТИЕ ПЛАВАЮЩИХ КНОПОК НА МОБИЛЬНЫХ */
+    @media(max-width:768px){
+      .floatactions{display:none}
+    }
 
-        .sidebar .nav-link i {
-            width: 20px;
-            margin-right: 0.75rem;
-        }
+    .fab{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid rgba(0,0,0,.08);color:var(--text);padding:12px 14px;border-radius:14px;backdrop-filter:blur(var(--glass-blur));box-shadow:var(--shadow);transition:all 0.2s;text-decoration:none;font-weight:600}
+    .fab:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.15)}
+    .fab-callback{background:var(--grad1);color:#000;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+    dialog{border:none;border-radius:var(--radius);padding:0;max-width:560px;width:min(560px,92%);background:var(--card);color:var(--text);backdrop-filter:blur(var(--glass-blur))}
+    .modal-head{padding:16px 18px;border-bottom:1px solid rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between}
+    .modal-body{padding:18px}
+    .form-row{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+    @media(max-width:560px){.form-row{grid-template-columns:1fr}}
+    input,select,textarea{width:100%;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.12);padding:12px;border-radius:12px;color:#0b1a33;box-sizing:border-box;font-size:14px}
+    textarea{min-height:90px;resize:vertical}
+    .divider{height:1px;background:rgba(0,0,0,.08);margin:16px 0}
+    .calc{padding:26px 0}
+    .calc-box{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media(max-width:980px){.calc-box{grid-template-columns:1fr}}
+    .price-out{font-weight:800;font-size:clamp(18px,2.4vw,22px)}
+    @media (max-width: 768px){.topbar{position: static; top: auto;}}
+    .payment-methods{margin:12px 0}
+    .payment-option{display:flex;align-items:center;gap:10px;margin:8px 0}
+    .payment-option input[type=radio]{margin:0;width:auto}
+    .payment-icons{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:18px 0}
+    .payment-icons svg{height:32px;width:auto;border-radius:6px;opacity:0.9}
+    .payment-icons svg:hover{opacity:1;transform:scale(1.02)}
+    .business-info{margin-top:18px;padding:18px;background:rgba(255,255,255,.6);border-radius:var(--radius);font-size:14px;line-height:1.5}
+    .business-info .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}
+    @media(max-width:600px){.business-info .row{grid-template-columns:1fr}}
+    .social-links{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+    .social-links a{background:var(--card);padding:10px 12px;border-radius:12px;border:1px solid rgba(0,0,0,.08);font-size:14px;font-weight:500;transition:all 0.2s}
+    .social-links a:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+    .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:22px 0}
+    .stat-item{text-align:center;background:var(--card);padding:18px;border-radius:var(--radius);border:1px solid rgba(0,0,0,.08);backdrop-filter:blur(var(--glass-blur))}
+    .stat-number{font-size:32px;font-weight:800;color:var(--brand)}
+    @media(max-width:600px){.stats-grid{grid-template-columns:1fr}}
 
-        .main-content {
-            margin-left: var(--sidebar-width);
-            min-height: 100vh;
-            padding: 2rem;
-            transition: all 0.3s ease;
-        }
+    /* НОВАЯ КАРТОЧКА СКИДКИ */
+    .discount-card{
+      background: linear-gradient(135deg, #FF8A00, #FFB14D);
+      border-radius:var(--radius);
+      padding: 20px;
+      margin: 20px 0;
+      color: #000;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(255,138,0,.3);
+      border: 2px solid rgba(255,255,255,.3);
+    }
+    .discount-card::before{
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,.1) 0%, transparent 50%);
+      animation: shimmer 4s ease-in-out infinite;
+    }
+    @keyframes shimmer{
+      0%,100%{transform:rotate(0deg);}
+      50%{transform:rotate(180deg);}
+    }
+    .discount-content{
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+    }
+    .discount-text h3{
+      margin: 0 0 8px 0;
+      font-size: 24px;
+      font-weight: 800;
+      color: #000;
+    }
+    .discount-text p{
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: rgba(0,0,0,.8);
+    }
+    .discount-wheel{
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: conic-gradient(#FF6B6B, #4ECDC4, #45B7D1, #96CEB4, #FFEAA7, #DDA0DD, #98D8C8, #F7DC6F);
+      display: grid;
+      place-items: center;
+      position: relative;
+      animation: spin 6s linear infinite;
+      border: 4px solid rgba(0,0,0,.2);
+      font-size: 24px;
+    }
+    @keyframes spin{
+      from{transform:rotate(0deg);}
+      to{transform:rotate(360deg);}
+    }
+    .discount-btn{
+      background: rgba(0,0,0,.9);
+      color: #FFD700;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.3s;
+      border: 2px solid rgba(255,215,0,.3);
+      font-size: 16px;
+    }
+    .discount-btn:hover{
+      background: rgba(0,0,0,1);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0,0,0,.3);
+    }
+    @media(max-width:768px){
+      .discount-content{grid-template-columns:1fr;text-align:center;gap:12px}
+      .discount-wheel{margin:0 auto}
+      .discount-text h3{font-size:20px}
+      .discount-text p{font-size:14px}
+    }
 
-        .stat-card {
-            background: white;
-            border-radius: 20px;
-            padding: 2rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border: none;
-            position: relative;
-            overflow: hidden;
-        }
+    /* Отзывы */
+    .reviews-grid{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      margin: 20px 0;
+    }
+    .review-item{
+      background: var(--card);
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: var(--radius);
+      padding: 16px;
+      backdrop-filter: blur(var(--glass-blur));
+    }
+    .review-rating{
+      color: #FFD700;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+    .review-text{
+      font-style: italic;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .review-author{
+      font-weight: 600;
+      color: var(--brand);
+    }
 
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: var(--primary-gradient);
-        }
+    /* ========== УЛУЧШЕННЫЙ ЧАТ-БОТ ========== */
+    .chat-widget{
+      position: fixed;
+      z-index: 70;
+      background: var(--card);
+      border: 1px solid rgba(0,0,0,.1);
+      border-radius: 12px;
+      padding: 16px;
+      backdrop-filter: blur(var(--glass-blur));
+      box-shadow: var(--shadow);
+      display: none;
+    }
 
-        .stat-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-        }
+    /* НА ДЕСКТОПЕ - СПРАВА ВВЕРХУ */
+    @media(min-width:769px){
+      .chat-widget{
+        bottom: 140px;
+        right: 14px;
+        max-width: 360px;
+        min-width: 340px;
+      }
+    }
 
-        .stat-icon {
-            width: 80px;
-            height: 80px;
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2rem;
-            color: white;
-            margin-bottom: 1rem;
-        }
+    /* НА МОБИЛЬНЫХ - ВНИЗУ СЛЕВА С КНОПКАМИ */
+    @media(max-width:768px){
+      .chat-widget{
+        bottom: 14px;
+        left: 14px;
+        right: 14px;
+        max-width: none;
+      }
+      .chat-mobile-actions{
+        display: flex !important;
+        gap: 8px;
+        margin: 12px 0;
+        padding: 12px 0;
+        border-top: 1px solid rgba(0,0,0,.1);
+        flex-wrap: wrap;
+      }
+      .chat-mobile-actions .fab{
+        flex: 1;
+        padding: 8px;
+        font-size: 12px;
+        justify-content: center;
+      }
+    }
 
-        .welcome-card {
-            background: var(--primary-gradient);
-            color: white;
-            border-radius: 20px;
-            padding: 3rem 2rem;
-            margin-bottom: 3rem;
-            position: relative;
-            overflow: hidden;
-        }
+    .chat-widget.active{
+      display: block;
+      animation: slideUp 0.3s ease-out;
+    }
+    @keyframes slideUp{
+      from{transform:translateY(20px);opacity:0}
+      to{transform:translateY(0);opacity:1}
+    }
 
-        .welcome-card::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: repeating-linear-gradient(
-                45deg,
-                transparent,
-                transparent 2px,
-                rgba(255,255,255,0.05) 2px,
-                rgba(255,255,255,0.05) 4px
-            );
-            animation: float 20s linear infinite;
-        }
+    .chat-mobile-actions{
+      display: none;
+    }
 
-        @keyframes float {
-            0% { transform: translateX(-100px) translateY(-100px); }
-            100% { transform: translateX(100px) translateY(100px); }
-        }
+    .chat-messages{
+      max-height: 280px;
+      overflow-y: auto;
+      margin-bottom: 12px;
+      padding: 8px;
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 8px;
+      background: rgba(255,255,255,.3);
+    }
 
-        .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-top: 2rem;
-        }
+    .chat-input-row{
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
 
-        .action-card {
-            background: white;
-            border-radius: 15px;
-            padding: 2rem;
-            text-align: center;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-            border: none;
-            text-decoration: none;
-            color: inherit;
-        }
+    .chat-input{
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,.1);
+      background: rgba(255,255,255,.9);
+      resize: none;
+      min-height: 40px;
+      max-height: 100px;
+    }
 
-        .action-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
-            color: inherit;
-            text-decoration: none;
-        }
+    .chat-send{
+      padding: 10px 12px;
+      background: var(--brand);
+      border: none;
+      border-radius: 8px;
+      color: #000;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
 
-        .action-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            background: var(--primary-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
+    .chat-send:hover{
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255,138,0,.3);
+    }
 
-        .sidebar-toggle {
-            display: none;
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1001;
-            background: var(--primary-gradient);
-            border: none;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            color: white;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
+    .chat-quick-buttons{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin: 10px 0;
+    }
 
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
+    .chat-quick-btn{
+      padding: 6px 8px;
+      font-size: 11px;
+      background: rgba(255,138,0,.1);
+      border: 1px solid rgba(255,138,0,.3);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
 
-            .sidebar.show {
-                transform: translateX(0);
-            }
+    .chat-quick-btn:hover{
+      background: var(--brand);
+      color: #000;
+    }
 
-            .main-content {
-                margin-left: 0;
-                padding: 1rem;
-            }
+    .chat-message{
+      margin: 8px 0;
+      line-height: 1.4;
+    }
 
-            .sidebar-toggle {
-                display: block;
-            }
+    .chat-message-user{
+      text-align: right;
+    }
 
-            .quick-actions {
-                grid-template-columns: 1fr;
-            }
-        }
+    .chat-message-user .chat-bubble{
+      background: var(--accent);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 12px 12px 4px 12px;
+      display: inline-block;
+      max-width: 80%;
+      word-wrap: break-word;
+    }
 
-        .version-badge {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
+    .chat-message-ai .chat-bubble{
+      background: rgba(255,138,0,.15);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 12px 12px 12px 4px;
+      display: inline-block;
+      max-width: 85%;
+      word-wrap: break-word;
+    }
 
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #28a745;
-            margin-right: 0.5rem;
-            animation: pulse 2s infinite;
-        }
+    .chat-typing{
+      background: rgba(255,138,0,.1);
+      padding: 6px 12px;
+      border-radius: 12px;
+      display: inline-block;
+      color: var(--muted);
+      font-style: italic;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
 
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
-        }
-    </style>
+    .chat-feedback{
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+      justify-content: flex-start;
+    }
+
+    .feedback-btn{
+      background: none;
+      border: 1px solid rgba(0,0,0,.1);
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+
+    .feedback-btn:hover{
+      background: var(--brand);
+      transform: scale(1.1);
+    }
+
+    /* FAQ */
+    .faq-item{
+      background: var(--card);
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: var(--radius);
+      margin: 12px 0;
+      overflow: hidden;
+      backdrop-filter: blur(var(--glass-blur));
+    }
+    .faq-question{
+      padding: 16px;
+      cursor: pointer;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.2s;
+    }
+    .faq-question:hover{
+      background: rgba(0,0,0,.05);
+    }
+    .faq-answer{
+      padding: 0 16px;
+      max-height: 0;
+      overflow: hidden;
+      transition: all 0.3s ease-out;
+    }
+    .faq-item.active .faq-answer{
+      max-height: 200px;
+      padding: 16px;
+    }
+    .faq-toggle{
+      transition: transform 0.3s;
+    }
+    .faq-item.active .faq-toggle{
+      transform: rotate(180deg);
+    }
+
+    @media (max-width: 480px) {
+      .hero{padding:18px 0 22px}
+      .calc-box{gap:14px}
+      .grid{gap:14px}
+      .fab{padding:10px 12px;font-size:14px}
+    }
+  </style>
 </head>
 <body>
-    <!-- Кнопка переключения сайдбара для мобильных -->
-    <button class="sidebar-toggle" onclick="toggleSidebar()">
-        <i class="fas fa-bars"></i>
-    </button>
 
-    <!-- Sidebar -->
-    <nav class="sidebar" id="sidebar">
-        <div class="logo">
-            <h3 class="text-white mb-1">
-                <i class="fas fa-fish me-2"></i>АкваАдмин
-            </h3>
-            <small class="text-white-50">Система управления</small>
-        </div>
-
-        <div class="nav flex-column">
-            <a class="nav-link <?= $page === 'dashboard' ? 'active' : '' ?>" href="?page=dashboard">
-                <i class="fas fa-tachometer-alt"></i>
-                <span>Панель управления</span>
-            </a>
-
-            <!-- Товары -->
-            <div class="nav-section">
-                <div class="nav-header text-white-50 px-3 py-2 mt-3 mb-2">
-                    <small>🛍️ ТОВАРЫ</small>
-                </div>
-                <a class="nav-link <?= in_array($page, ['products', 'product_create', 'product_edit', 'product_view']) ? 'active' : '' ?>" href="?page=products">
-                    <i class="fas fa-fish"></i>
-                    <span>Управление товарами</span>
-                </a>
-                <a class="nav-link" href="?page=product_create">
-                    <i class="fas fa-plus"></i>
-                    <span>Создать товар</span>
-                </a>
-                <a class="nav-link" href="?page=categories">
-                    <i class="fas fa-tags"></i>
-                    <span>Категории</span>
-                </a>
-            </div>
-
-            <!-- Заказы -->
-            <div class="nav-section">
-                <div class="nav-header text-white-50 px-3 py-2 mt-3 mb-2">
-                    <small>📦 ПРОДАЖИ</small>
-                </div>
-                <a class="nav-link <?= $page === 'orders' ? 'active' : '' ?>" href="?page=orders">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span>Заказы</span>
-                </a>
-                <a class="nav-link <?= $page === 'reviews' ? 'active' : '' ?>" href="?page=reviews">
-                    <i class="fas fa-star"></i>
-                    <span>Отзывы</span>
-                </a>
-            </div>
-
-            <!-- Контент -->
-            <div class="nav-section">
-                <div class="nav-header text-white-50 px-3 py-2 mt-3 mb-2">
-                    <small>📝 КОНТЕНТ</small>
-                </div>
-                <a class="nav-link <?= $page === 'news' ? 'active' : '' ?>" href="?page=news">
-                    <i class="fas fa-newspaper"></i>
-                    <span>Новости</span>
-                </a>
-                <a class="nav-link <?= $page === 'slider' ? 'active' : '' ?>" href="?page=slider">
-                    <i class="fas fa-images"></i>
-                    <span>Слайдер</span>
-                </a>
-                <a class="nav-link <?= $page === 'pages' ? 'active' : '' ?>" href="?page=pages">
-                    <i class="fas fa-file-alt"></i>
-                    <span>Страницы</span>
-                </a>
-            </div>
-
-            <!-- Аналитика -->
-            <div class="nav-section">
-                <div class="nav-header text-white-50 px-3 py-2 mt-3 mb-2">
-                    <small>📊 АНАЛИТИКА</small>
-                </div>
-                <a class="nav-link <?= $page === 'statistics' ? 'active' : '' ?>" href="?page=statistics">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Статистика</span>
-                </a>
-                <a class="nav-link <?= $page === 'reports' ? 'active' : '' ?>" href="?page=reports">
-                    <i class="fas fa-file-export"></i>
-                    <span>Отчеты</span>
-                </a>
-            </div>
-
-            <!-- Настройки -->
-            <div class="nav-section">
-                <div class="nav-header text-white-50 px-3 py-2 mt-3 mb-2">
-                    <small>⚙️ СИСТЕМА</small>
-                </div>
-                <a class="nav-link <?= $page === 'settings' ? 'active' : '' ?>" href="?page=settings">
-                    <i class="fas fa-cog"></i>
-                    <span>Настройки</span>
-                </a>
-                <a class="nav-link <?= $page === 'users' ? 'active' : '' ?>" href="?page=users">
-                    <i class="fas fa-users"></i>
-                    <span>Пользователи</span>
-                </a>
-            </div>
-
-            <hr style="border-color: rgba(255, 255, 255, 0.2); margin: 2rem 1rem;">
-
-            <a class="nav-link" href="../index.php" target="_blank">
-                <i class="fas fa-external-link-alt"></i>
-                <span>Посмотреть сайт</span>
-            </a>
-
-            <div class="text-center mt-4 px-3">
-                <div class="status-indicator"></div>
-                <small class="text-white-50">Система онлайн</small>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Main Content -->
-    <main class="main-content">
-        <div class="version-badge">v2.0 MEGA</div>
-
-        <?php if ($page === 'dashboard'): ?>
-        <!-- Dashboard -->
-        <div class="welcome-card">
-            <div style="position: relative; z-index: 1;">
-                <h1 class="mb-3">
-                    <i class="fas fa-rocket me-3"></i>
-                    Добро пожаловать в АкваАдмин МЕГА!
-                </h1>
-                <p class="lead mb-0">
-                    Профессиональная система управления интернет-магазином аквариумных товаров
-                </p>
-                <div class="mt-3">
-                    <span class="badge bg-light text-dark me-2">🚀 Версия 2.0</span>
-                    <span class="badge bg-light text-dark me-2">🤖 ИИ интеграция</span>
-                    <span class="badge bg-light text-dark">⚡ Мега функционал</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Статистика -->
-        <div class="row mb-4">
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea, #764ba2);">
-                        <i class="fas fa-fish"></i>
-                    </div>
-                    <h3 class="fw-bold text-primary"><?= $stats['total_products'] ?></h3>
-                    <p class="text-muted mb-0">Товаров в каталоге</p>
-                    <small class="text-success">
-                        <i class="fas fa-arrow-up me-1"></i>+<?= rand(1, 5) ?> за неделю
-                    </small>
-                </div>
-            </div>
-
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
-                        <i class="fas fa-shopping-cart"></i>
-                    </div>
-                    <h3 class="fw-bold text-success"><?= $stats['total_orders'] ?></h3>
-                    <p class="text-muted mb-0">Всего заказов</p>
-                    <small class="text-success">
-                        <i class="fas fa-arrow-up me-1"></i>+<?= rand(0, 3) ?> сегодня
-                    </small>
-                </div>
-            </div>
-
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #ff416c, #ff4b2b);">
-                        <i class="fas fa-ruble-sign"></i>
-                    </div>
-                    <h3 class="fw-bold text-danger"><?= formatPrice($stats['total_revenue']) ?></h3>
-                    <p class="text-muted mb-0">Общая выручка</p>
-                    <small class="text-info">
-                        <i class="fas fa-calendar me-1"></i>За все время
-                    </small>
-                </div>
-            </div>
-
-            <div class="col-xl-3 col-md-6 mb-4">
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
-                        <i class="fas fa-tags"></i>
-                    </div>
-                    <h3 class="fw-bold text-warning"><?= $stats['total_categories'] ?></h3>
-                    <p class="text-muted mb-0">Категорий товаров</p>
-                    <small class="text-muted">
-                        <i class="fas fa-list me-1"></i>Активных
-                    </small>
-                </div>
-            </div>
-        </div>
-
-        <!-- Быстрые действия -->
-        <h4 class="mb-4">
-            <i class="fas fa-bolt me-2 text-primary"></i>⚡ Быстрые действия
-        </h4>
-
-        <div class="quick-actions">
-            <a href="?page=products" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-fish"></i>
-                </div>
-                <h5 class="fw-bold">🐠 Мега модуль товары</h5>
-                <p class="text-muted">Создание, редактирование и управление товарами с ИИ</p>
-                <div class="mt-3">
-                    <span class="badge bg-primary">Новый интерфейс</span>
-                    <span class="badge bg-success">ИИ помощник</span>
-                </div>
-            </a>
-
-            <a href="?page=product_create" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-plus"></i>
-                </div>
-                <h5 class="fw-bold">➕ Создать товар</h5>
-                <p class="text-muted">Быстрое создание товара с помощью ИИ генерации</p>
-                <div class="mt-3">
-                    <span class="badge bg-success">ИИ генерация</span>
-                </div>
-            </a>
-
-            <a href="?page=orders" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-shopping-cart"></i>
-                </div>
-                <h5 class="fw-bold">📦 Управление заказами</h5>
-                <p class="text-muted">Обработка заказов и управление статусами</p>
-                <div class="mt-3">
-                    <span class="badge bg-info"><?= $stats['today_orders'] ?> сегодня</span>
-                </div>
-            </a>
-
-            <a href="?page=statistics" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-chart-line"></i>
-                </div>
-                <h5 class="fw-bold">📊 Аналитика и отчеты</h5>
-                <p class="text-muted">Детальная статистика продаж и трафика</p>
-                <div class="mt-3">
-                    <span class="badge bg-warning">Новые графики</span>
-                </div>
-            </a>
-
-            <a href="?page=reviews" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-star"></i>
-                </div>
-                <h5 class="fw-bold">⭐ Отзывы покупателей</h5>
-                <p class="text-muted">Модерация и управление отзывами</p>
-            </a>
-
-            <a href="?page=settings" class="action-card">
-                <div class="action-icon">
-                    <i class="fas fa-cog"></i>
-                </div>
-                <h5 class="fw-bold">⚙️ Настройки системы</h5>
-                <p class="text-muted">Конфигурация магазина и параметры</p>
-            </a>
-        </div>
-
-        <!-- Последняя активность -->
-        <div class="row mt-5">
-            <div class="col-lg-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-clock me-2"></i>📈 Последняя активность
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
-                                <i class="fas fa-plus"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-1">Добавлен новый товар</h6>
-                                <small class="text-muted">5 минут назад</small>
-                            </div>
-                        </div>
-
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
-                                <i class="fas fa-shopping-cart"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-1">Новый заказ #<?= rand(1000, 9999) ?></h6>
-                                <small class="text-muted">23 минуты назад</small>
-                            </div>
-                        </div>
-
-                        <div class="d-flex align-items-center">
-                            <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
-                                <i class="fas fa-edit"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-1">Обновлены настройки</h6>
-                                <small class="text-muted">1 час назад</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">
-                            <i class="fas fa-rocket me-2"></i>🚀 Что нового
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="alert alert-info">
-                            <strong>Версия 2.0 МЕГА!</strong><br>
-                            • 🤖 ИИ помощник для товаров<br>
-                            • 📸 Улучшенная работа с изображениями<br>
-                            • ⚡ Новый мега модуль товаров<br>
-                            • 🎯 SEO оптимизация<br>
-                            • 📊 Расширенная аналитика
-                        </div>
-
-                        <div class="text-center">
-                            <a href="?page=products" class="btn btn-primary">
-                                <i class="fas fa-play me-1"></i>Попробовать сейчас
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+<header class='topbar'>
+  <div class='wrap topflex'>
+    <div class='logo'>
+      <div class='logo-badge'>
+        <?php if (!empty($cfg['logo']) && file_exists($_SERVER['DOCUMENT_ROOT'] . $cfg['logo'])): ?>
+          <img src='<?=esc($cfg['logo'])?>' alt='Логотип' style='width:100%;height:100%;object-fit:cover;border-radius:12px'>
         <?php else: ?>
-        <!-- Страница не найдена -->
-        <div class="text-center py-5">
-            <i class="fas fa-exclamation-triangle fa-4x text-warning mb-4"></i>
-            <h2>Страница в разработке</h2>
-            <p class="text-muted">
-                Раздел "<?= htmlspecialchars($page) ?>" находится в разработке.<br>
-                Используйте МЕГА МОДУЛЬ ТОВАРЫ для управления товарами.
-            </p>
-            <div class="mt-4">
-                <a href="?page=dashboard" class="btn btn-primary me-2">
-                    <i class="fas fa-home me-1"></i>На главную
-                </a>
-                <a href="?page=products" class="btn btn-success">
-                    <i class="fas fa-fish me-1"></i>Мега модуль товары
-                </a>
-            </div>
+          П
+        <?php endif; ?>
+      </div>
+      <div>
+        <div class='logo-title'><?=esc($cfg['brand'])?></div>
+        <div class='muted' style='font-size:12px'><?=esc($cfg['slogan'])?></div>
+      </div>
+    </div>
+
+    <button class='menu-toggle' onclick='toggleMobileMenu()'>☰ Меню</button>
+
+    <div class='phone'><a href='tel:<?=esc($cfg['phone_raw'])?>'><?=esc($cfg['phone_display'])?></a></div>
+
+    <nav class='nav' id='mobileNav'>
+      <a href='#catalog'>Каталог</a>
+      <a href='#calc'>Калькулятор</a>
+      <a href='products.php'>🛍️ Товары</a>
+      <a href='https://принтсс.рф/photoconstructor.php' target='_blank'>Фото онлайн</a>
+      <a href='https://printc47.ru/public/banner_calculator.html' target='_blank'>Кальк. баннеров</a>
+      <a href='#services'>Услуги</a>
+      <a href='#reviews'>Отзывы</a>
+      <a href='http://портфол.принтсс.рф/' target='_blank'>Портфолио</a>
+      <a href='#faq'>FAQ</a>
+      <a href='#how'>Как заказать</a>
+      <a href='#contacts'>Контакты</a>
+    </nav>
+  </div>
+</header>
+
+<section class='hero'>
+  <div class='wrap row'>
+    <div class='col-6'>
+      <div class='pill'>⚡ Быстро • Рядом • Без сюрпризов</div>
+      <h1><?=esc($cfg['hero'])?></h1>
+      <p class='muted' style='margin-bottom:14px'>Печать документов, визиток, баннеров, листовок, сувенирки. Проверим макет бесплатно, подскажем материалы и сроки. Оплата картой и по безналу.</p>
+
+      <div class='stats-grid'>
+        <div class='stat-item'>
+          <div class='stat-number'>5</div>
+          <div class='muted'>минут на фото</div>
         </div>
+        <div class='stat-item'>
+          <div class='stat-number'>2-4</div>
+          <div class='muted'>часа баннер</div>
+        </div>
+        <div class='stat-item'>
+          <div class='stat-number'>100+</div>
+          <div class='muted'>видов услуг</div>
+        </div>
+      </div>
+
+      <div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:16px'>
+        <button class='btn btn-brand' onclick='openOrder("Фото на документы", "от 400 ₽")'>Сделать фото за 5 минут</button>
+        <a class='btn btn-primary' href='#catalog'>Каталог услуг</a>
+        <button class='btn' onclick='openCallback()'>📞 Обратный звонок</button>
+      </div>
+      <div style='margin-top:10px;display:flex;gap:12px;flex-wrap:wrap'>
+        <a class='btn btn-outline' target='_blank' href='https://принтсс.рф/photoconstructor.php'>🖼️ Заказ фото онлайн</a>
+        <a class='btn btn-outline' target='_blank' href='https://printc47.ru/public/banner_calculator.html'>📐 Калькулятор баннеров</a>
+      </div>
+      <div style='margin-top:12px' class='muted'>Адрес: <?=esc($cfg['address'])?> • Рядом: OZON и «Саша Суши»</div>
+      <div style='margin-top:8px;display:flex;gap:10px;flex-wrap:wrap'>
+        <?php foreach($cfg['workhours'] as $w): ?><span class='badge'>🕒 <?=esc($w)?></span><?php endforeach; ?>
+      </div>
+    </div>
+    <div class='col-6'>
+      <div class='hero-media'>
+      <?php if ($cfg['hero_mode']==='image' && !empty($cfg['hero_image'])): ?>
+        <img src='<?=esc($cfg['hero_image'])?>' alt='Фотоцентр' style='width:100%;height:100%;object-fit:cover'>
+      <?php else: ?>
+        <svg viewBox='0 0 640 400' width='100%' height='100%' xmlns='http://www.w3.org/2000/svg'>
+          <defs>
+            <linearGradient id='g1' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='<?=esc($brandCol)?>'/><stop offset='1' stop-color='#FFB14D'/></linearGradient>
+            <linearGradient id='g2' x1='0' x2='1' y1='1' y2='0'><stop offset='0' stop-color='<?=esc($accentCol)?>'/><stop offset='1' stop-color='#00C2FF'/></linearGradient>
+          </defs>
+          <rect width='640' height='400' fill='#f6f9ff'/>
+          <g opacity='.25'><circle cx='520' cy='80' r='120' fill='url(#g2)'/><circle cx='120' cy='320' r='150' fill='url(#g1)'/></g>
+          <g transform='translate(100,90)'><rect x='0' y='0' rx='14' width='280' height='200' fill='rgba(255,255,255,.75)' stroke='rgba(0,0,0,.08)'/><rect x='16' y='16' width='248' height='120' rx='8' fill='url(#g2)' opacity='.9'/><rect x='16' y='148' width='140' height='20' rx='6' fill='#e6eefc'/><rect x='16' y='174' width='120' height='12' rx='6' fill='#d9e5fb'/></g>
+          <g transform='translate(340,110)'><rect x='0' y='0' rx='14' width='200' height='160' fill='rgba(255,255,255,.75)' stroke='rgba(0,0,0,.08)'/><circle cx='100' cy='70' r='46' fill='url(#g1)'/><rect x='40' y='130' width='120' height='12' rx='6' fill='#d9e5fb'/></g>
+          <text x='50%' y='92%' text-anchor='middle' font-family='Inter,Arial' font-weight='800' font-size='22' fill='#0e1220'>Быстрая печать и фото</text>
+        </svg>
+      <?php endif; ?>
+      </div>
+
+      <!-- КАРТОЧКА ИГРЫ ПОД ФОТО С ДЕВУШКОЙ -->
+      <div class='discount-card'>
+        <div class='discount-content'>
+          <div class='discount-text'>
+            <h3>🎁 Получи скидку до 30%!</h3>
+            <p>Прокрути колесо удачи и получи персональную скидку на любую услугу нашего фотоцентра</p>
+          </div>
+          <div style='display:flex;flex-direction:column;align-items:center;gap:12px'>
+            <div class='discount-wheel'>🎯</div>
+            <a href='http://игра.принтсс.рф' target='_blank' class='discount-btn'>
+              🎮 ИГРАТЬ
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id='calc' class='wrap calc'>
+  <h2>📐 Онлайн‑калькулятор с доставкой</h2>
+  <div class='calc-box'>
+    <div class='card' style='padding:16px'>
+      <h3 style='margin:0 0 12px'>Параметры</h3>
+      <div class='form-row'>
+        <div><label>Тип изделия<br>
+          <select id='calcType'>
+            <option value='cards'>Визитки</option>
+            <option value='flyers'>Листовки</option>
+            <option value='banner'>Баннер</option>
+            <option value='photo'>Фотопечать</option>
+            <option value='stickers'>Наклейки</option>
+            <option value='stamps'>Штампы</option>
+          </select>
+        </label></div>
+        <div id='calcDynamicA'></div>
+      </div>
+      <div id='calcMore' class='form-row' style='margin-top:10px'></div>
+
+      <!-- Калькулятор доставки -->
+      <div style='margin-top:16px;padding-top:12px;border-top:1px solid rgba(0,0,0,.1)'>
+        <h4 style='margin:0 0 10px'>🚚 Доставка</h4>
+        <div class='form-row'>
+          <div><label>Адрес доставки<br><input id='deliveryAddress' placeholder='Введите адрес в Сосновом Бору'></label></div>
+          <div><label>Стоимость доставки<br><input id='deliveryPrice' readonly value='Бесплатно в центре'></label></div>
+        </div>
+      </div>
+
+      <div class='divider'></div>
+      <div class='price-out'>Итого: <span id='calcPrice'>0 ₽</span></div>
+      <div class='muted' id='calcNote' style='margin-top:8px'></div>
+      <div style='margin-top:12px;display:flex;gap:12px;flex-wrap:wrap'>
+        <button class='btn btn-primary' id='calcOrder'>Заказать по расчёту</button>
+        <button class='btn' id='calcReset'>Сброс</button>
+        <a class='btn btn-outline' target='_blank' href='https://printc47.ru/public/banner_calculator.html'>📐 Отдельный калькулятор баннеров</a>
+      </div>
+    </div>
+    <div class='card' style='padding:16px'>
+      <h3 style='margin:0 0 12px'>Подсказки и популярные услуги</h3>
+      <ul class='muted' style='font-size:14px;line-height:1.5'>
+        <li><strong>Визитки:</strong> печать 1 день, мелованная 300 г/м², тираж от 100 шт.</li>
+        <li><strong>Листовки:</strong> A6/A5/A4, одно/двусторонние, срок 1-2 дня.</li>
+        <li><strong>Баннер:</strong> ПВХ 440 г/м², люверсы, проварка. Срочно 2–4 часа.</li>
+        <li><strong>Фото:</strong> 10×15, 15×21, 20×30 — готово через 10 минут.</li>
+        <li><strong>Наклейки:</strong> самоклеящиеся, фигурная резка по контуру.</li>
+        <li><strong>Штампы:</strong> автоматические оснастки, изготовление в день заказа.</li>
+      </ul>
+      <div class='muted' style='margin-top:10px;font-size:13px'>💡 Расчет подставится в заявку, менеджер уточнит детали и сроки.</div>
+      <div class='divider'></div>
+      <div style='display:flex;gap:10px;flex-wrap:wrap'>
+        <a class='btn btn-primary' target='_blank' href='https://принтсс.рф/photoconstructor.php'>🖼️ Заказ фото онлайн</a>
+        <button class='btn' onclick='openCallback()'>📞 Быстрый расчет по телефону</button>
+        <button class='btn btn-outline' onclick='openChat()'>💬 Чат с ИИ</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id='catalog' class='wrap' style='padding:24px 0'>
+  <div style='display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:10px'>
+    <h2 style='margin:0'>Каталог услуг</h2>
+    <span class='muted'><?=esc($cfg['catalog_desc'])?></span>
+  </div>
+  <div class='grid'>
+    <?php
+      $services = [
+        ['Фото на документы','от 400 ₽','id-card'],
+        ['Печать документов A4/A3','от 20 ₽/лист','docs'],
+        ['Печать визиток','от 900 ₽/100 шт','cards'],
+        ['Печать листовок','цены уточняйте','flyer'],
+        ['Печать баннеров','от 1100 ₽','banner'],
+        ['Печать плакатов/постеров','от 250 ₽','poster'],
+        ['Печать фотографий','от 30 ₽/шт','photo'],
+        ['Печать наклеек/стикеров','от 350 ₽/м²','sticker'],
+        ['Печать на футболках','от 1200 ₽','tshirt'],
+        ['Печать на кружках','от 600 ₽','mug'],
+        ['Ламинация и брошюровка','от 60 ₽','lam'],
+        ['Штампы/печати','от 1800 ₽','stamp'],
+        ['Печать на пленке','цены уточняйте','film'],
+        ['Проявка пленки','быстро и качественно','develop'],
+        ['Копирование и сканирование','от 10 ₽/стр','copy'],
+        ['Печать на холсте','срок 1–2 дня','canvas'],
+      ];
+      $service_info = [
+        'Фото на документы'=>'5–10 минут. Электронная версия бесплатно. Детская, семейная, стандартные форматы.',
+        'Печать документов A4/A3'=>'Срочная распечатка, копирование и сканирование. Ч/б и цветная печать.',
+        'Печать визиток'=>'Мелованная/дизайнерская бумага, ламинация, скругление углов. Срок: 1 день.',
+        'Печать листовок'=>'A6/A5/A4, одно/двусторонние, бумага 130–170 г/м². Тираж от 100 шт.',
+        'Печать баннеров'=>'ПВХ 440 г/м², люверсы и проварка по краям. Срочно за 2–4 часа.',
+        'Печать плакатов/постеров'=>'A3/A2/A1, плотная бумага, яркие цвета, быстрые сроки.',
+        'Печать фотографий'=>'10×15, 15×21, 20×30 — мат/глянец, готово через 10 минут.',
+        'Печать наклеек/стикеров'=>'Самоклеящаяся пленка ПВХ, фигурная резка по контуру.',
+        'Печать на футболках'=>'DTF/термотрансфер. От 1 шт. Стойкая печать и яркие цвета.',
+        'Печать на кружках'=>'Сублимация. Белые и цветные кружки, подарок за 1 час.',
+        'Ламинация и брошюровка'=>'Папки, пружина, ламинация 80–250 мкм. Аккуратно и быстро.',
+        'Штампы/печати'=>'Изготовление в день заказа. Автоматические оснастки.',
+        'Печать на пленке'=>'Для витрин, авто и интерьера. Мат/глянец, плоттерная резка.',
+        'Проявка пленки'=>'Бережная обработка. Сканирование в высоком качестве.',
+        'Копирование и сканирование'=>'Сканирование до A3, отправим на e-mail/телефон.',
+        'Печать на холсте'=>'Натяжка на подрамник, по желанию защитный лак.'
+      ];
+      function icon_svg($key){
+        $defs = '<defs><linearGradient id=\'ico\' x1=\'0\' y1=\'0\' x2=\'1\' y2=\'1\'><stop offset=\'0\' stop-color=\'#FF8A00\'/><stop offset=\'1\' stop-color=\'#FFB14D\'/></linearGradient></defs>';
+        $bg = '<circle cx=\'32\' cy=\'32\' r=\'30\' fill=\'rgba(0,0,0,.04)\' stroke=\'rgba(0,0,0,.06)\' />';
+        $style = 'stroke=\'url(#ico)\' stroke-width=\'2.2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' fill=\'none\'';
+        $map = [
+          'id-card'=>'<rect x=\'14\' y=\'18\' width=\'36\' height=\'28\' rx=\'4\' '.$style.'/><circle cx=\'24\' cy=\'30\' r=\'3\' '.$style.'/><path d=\'M22 36h8\' '.$style.'/><path d=\'M34 26h10M34 31h10M34 36h8\' '.$style.'/>',
+          'docs'=>'<rect x=\'18\' y=\'14\' width=\'28\' height=\'36\' rx=\'4\' '.$style.'/><path d=\'M22 24h20M22 30h14M22 36h12\' '.$style.'/>',
+          'cards'=>'<rect x=\'12\' y=\'22\' width=\'40\' height=\'20\' rx=\'4\' '.$style.'/><path d=\'M12 28h40\' '.$style.'/>',
+          'flyer'=>'<rect x=\'18\' y=\'14\' width=\'16\' height=\'36\' rx=\'3\' '.$style.'/><rect x=\'30\' y=\'20\' width=\'16\' height=\'30\' rx=\'3\' '.$style.'/>',
+          'banner'=>'<rect x=\'12\' y=\'20\' width=\'40\' height=\'16\' rx=\'3\' '.$style.'/><path d=\'M16 36v6M40 36v6\' '.$style.'/>',
+          'poster'=>'<rect x=\'16\' y=\'12\' width=\'32\' height=\'40\' rx=\'4\' '.$style.'/><circle cx=\'32\' cy=\'30\' r=\'6\' '.$style.'/>',
+          'photo'=>'<rect x=\'12\' y=\'16\' width=\'40\' height=\'32\' rx=\'4\' '.$style.'/><circle cx=\'26\' cy=\'30\' r=\'4\' '.$style.'/><path d=\'M30 36l4-4 8 8\' '.$style.'/>',
+          'sticker'=>'<path d=\'M20 16h16a8 8 0 0 1 8 8v16H28a8 8 0 0 1-8-8V16z\' '.$style.'/><path d=\'M44 24v16\' '.$style.'/>',
+          'tshirt'=>'<path d=\'M24 18l8-4 8 4 6-4 4 8-6 4v16a4 4 0 0 1-4 4H28a4 4 0 0 1-4-4V26l-6-4 4-8z\' '.$style.'/>',
+          'mug'=>'<rect x=\'16\' y=\'22\' width=\'18\' height=\'22\' rx=\'4\' '.$style.'/><path d=\'M34 26h6a6 6 0 0 1 0 12h-6\' '.$style.'/>',
+          'lam'=>'<rect x=\'14\' y=\'24\' width=\'36\' height=\'16\' rx=\'4\' '.$style.'/><rect x=\'20\' y=\'28\' width=\'24\' height=\'8\' rx=\'3\' '.$style.'/>',
+          'stamp'=>'<path d=\'M32 14a6 6 0 0 1 6 6c0 2.4-1.4 4.4-3.4 5.4L36 32H28l1.4-6.6A6 6 0 0 1 26 20a6 6 0 0 1 6-6z\' '.$style.'/><rect x=\'18\' y=\'34\' width=\'28\' height=\'6\' rx=\'2\' '.$style.'/>',
+          'film'=>'<rect x=\'14\' y=\'16\' width=\'36\' height=\'32\' rx=\'4\' '.$style.'/><path d=\'M24 16v32M40 16v32M14 24h36M14 32h36\' '.$style.'/>',
+          'develop'=>'<rect x=\'16\' y=\'18\' width=\'32\' height=\'28\' rx=\'4\' '.$style.'/><circle cx=\'32\' cy=\'32\' r=\'6\' '.$style.'/>',
+          'copy'=>'<rect x=\'18\' y=\'16\' width=\'20\' height=\'32\' rx=\'4\' '.$style.'/><rect x=\'28\' y=\'20\' width=\'20\' height=\'28\' rx=\'4\' '.$style.'/>',
+          'canvas'=>'<rect x=\'16\' y=\'18\' width=\'32\' height=\'24\' rx=\'3\' '.$style.'/><path d=\'M24 18v-6M40 18v-6M22 42h20\' '.$style.'/>',
+          'poster2'=>'<rect x=\'16\' y=\'12\' width=\'32\' height=\'40\' rx=\'4\' '.$style.'/>'
+        ];
+        $p = $map[$key] ?? $map['poster2'];
+        return '<svg width=\'80\' height=\'80\' viewBox=\'0 0 64 64\' xmlns=\'http://www.w3.org/2000/svg\'>'.$defs.$bg.$p.'</svg>';
+      }
+    ?>
+    <?php foreach($services as $s): $title=$s[0]; $price=$s[1]; $key=$s[2]; ?>
+      <div class='card' data-service='<?=esc($title)?>'>
+        <div class='card-illustr'><?=icon_svg($key)?></div>
+        <h3><?=esc($title)?></h3>
+        <small><?=esc($service_info[$title] ?? '')?></small>
+        <p><?=esc($price)?></p>
+        <div class='actions'>
+          <button class='btn btn-primary' onclick='openOrder("<?=esc($title)?>","<?=esc($price)?>")'>Заказать</button>
+          <?php if($key==='banner'): ?>
+            <a class='btn btn-outline' target='_blank' href='https://printc47.ru/public/banner_calculator.html'>📐 Калькулятор</a>
+          <?php endif; ?>
+          <?php if($key==='id-card'): ?>
+            <a class='btn btn-outline' target='_blank' href='https://принтсс.рф/photoconstructor.php'>🖼️ Фото онлайн</a>
+          <?php endif; ?>
+          <button class='btn btn-outline' onclick='showInfo("<?=esc($title)?>");'>Подробнее</button>
+        </div>
+      </div>
+    <?php endforeach; ?>
+  </div>
+</section>
+
+<section id='reviews' class='wrap' style='padding:24px 0'>
+  <div style='display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:20px'>
+    <h2 style='margin:0'>⭐ Отзывы клиентов</h2>
+    <button class='btn btn-primary' onclick='openReviewModal()'>Оставить отзыв</button>
+  </div>
+
+  <div class='reviews-grid'>
+    <div class='review-item'>
+      <div class='review-rating'>⭐⭐⭐⭐⭐</div>
+      <div class='review-text'>'Супер быстро сделали визитки! Качество отличное, цены адекватные. Теперь буду обращаться только к ним.'</div>
+      <div class='review-author'>— Анна К.</div>
+    </div>
+    <div class='review-item'>
+      <div class='review-rating'>⭐⭐⭐⭐⭐</div>
+      <div class='review-text'>'Фото на документы за 5 минут - это реально! Плюс электронная версия бесплатно. Очень удобно.'</div>
+      <div class='review-author'>— Михаил С.</div>
+    </div>
+    <div class='review-item'>
+      <div class='review-rating'>⭐⭐⭐⭐⭐</div>
+      <div class='review-text'>'Печатали баннер срочно - справились за 3 часа! Качество супер, люверсы ровные. Рекомендую.'</div>
+      <div class='review-author'>— ИП Петров</div>
+    </div>
+  </div>
+</section>
+
+<section id='faq' class='wrap' style='padding:24px 0'>
+  <h2>❓ Часто задаваемые вопросы</h2>
+
+  <div class='faq-item'>
+    <div class='faq-question' onclick='toggleFaq(this)'>
+      <span>Сколько по времени делаете фото на документы?</span>
+      <span class='faq-toggle'>▼</span>
+    </div>
+    <div class='faq-answer'>
+      <p>Фото на документы готово через 5-10 минут. Электронную версию высылаем бесплатно на email или в мессенджеры.</p>
+    </div>
+  </div>
+
+  <div class='faq-item'>
+    <div class='faq-question' onclick='toggleFaq(this)'>
+      <span>Какие форматы файлов принимаете для печати?</span>
+      <span class='faq-toggle'>▼</span>
+    </div>
+    <div class='faq-answer'>
+      <p>Принимаем: PDF, JPG, PNG, TIFF, AI, PSD, CDR, EPS. Рекомендуем PDF в CMYK, 300 dpi с вылетами 2-3 мм.</p>
+    </div>
+  </div>
+
+  <div class='faq-item'>
+    <div class='faq-question' onclick='toggleFaq(this)'>
+      <span>Есть ли доставка по городу?</span>
+      <span class='faq-toggle'>▼</span>
+    </div>
+    <div class='faq-answer'>
+      <p>Да, доставляем по Сосновому Бору. В центре города - бесплатно, на окраины - 150-300 ₽ в зависимости от района.</p>
+    </div>
+  </div>
+
+  <div class='faq-item'>
+    <div class='faq-question' onclick='toggleFaq(this)'>
+      <span>Делаете ли срочные заказы?</span>
+      <span class='faq-toggle'>▼</span>
+    </div>
+    <div class='faq-answer'>
+      <p>Конечно! Фото - 5 минут, баннеры - 2-4 часа, визитки - в тот же день. Срочность может увеличить стоимость на 30-50%.</p>
+    </div>
+  </div>
+</section>
+
+<section id='services' class='wrap features'>
+  <div class='row'>
+    <div class='col-6'>
+      <div class='feature'><div>✅</div><div>
+        <h3 style='margin:8px 0'>Сроки и цены</h3>
+        <ul class='muted'>
+          <li>Фото на документы — 400 ₽, 5–10 минут, электронный вид бесплатно</li>
+          <li>Баннеры — от 1100 ₽, 2–4 часа</li>
+          <li>Распечатка — от 20 ₽/лист, сразу</li>
+          <li>Фотопечать — от 30 ₽/шт, 10 минут</li>
+          <li>Визитки/листовки — 1 день</li>
+          <li>Холст — 1–2 дня</li>
+          <li>Штампы — от 1800 ₽, от 1 часа</li>
+        </ul></div></div>
+    </div>
+    <div class='col-6'>
+      <div class='feature'><div>🛠️</div><div>
+        <h3 style='margin:8px 0'>Преимущества</h3>
+        <ul class='muted'>
+          <li>Проверим макет бесплатно</li>
+          <li>Собственное оборудование</li>
+          <li>Оплата: карта, нал, безнал<?=!empty($cfg['yukassa']['enabled']) ? ', онлайн' : ''?></li>
+          <li>Доставка по городу и РФ</li>
+          <li>Связь: телефон, WhatsApp, Telegram</li>
+          <li>Бесплатные консультации</li>
+          <li>Гарантия качества</li>
+        </ul></div></div>
+    </div>
+  </div>
+</section>
+
+<section id='how' class='wrap'>
+  <div class='row'>
+    <div class='col-6'>
+      <h2>Как оформить заказ</h2>
+      <ol class='steps'>
+        <li>Выберите услугу или рассчитайте стоимость</li>
+        <li>Загрузите макет или закажите дизайн</li>
+        <li>Подтвердите цену и срок</li>
+        <li>Заберите в точке или дождитесь доставки</li>
+      </ol>
+      <div class='divider'></div>
+      <div class='muted'>Не нашли нужное? Звоните: <a class='btn' href='tel:+79522003990'>📞 +7 (952) 200‑39‑90</a></div>
+    </div>
+    <div class='col-6'>
+      <h2>Требования к макетам</h2>
+      <ul class='steps'>
+        <li>PDF, TIFF, PNG, JPG • CMYK • 300 dpi</li>
+        <li>Вылеты 2–3 мм • Текст в кривых</li>
+        <li>Большие файлы упакуйте в ZIP/RAR</li>
+      </ul>
+      <div class='divider'></div>
+      <button class='btn btn-primary' onclick='openOrder("Быстрый расчет","")'>Получить быстрый расчет</button>
+    </div>
+  </div>
+</section>
+
+<section id='contacts' class='wrap' style='padding:24px 0 10px'>
+  <h2>Свяжитесь с нами</h2>
+  <div class='row'>
+    <div class='col-6'>
+      <div class='social-links'>
+        <a href='tg://resolve?phone=79522003990'>📱 Telegram</a>
+        <a target='_blank' href='https://wa.me/79522003990'>💚 WhatsApp</a>
+        <a href='mailto:<?=esc($cfg['email_to'])?>'>✉️ Email</a>
+        <a href='tel:+79522003990'>📞 Телефон</a>
+        <?php if(!empty($cfg['social']['vk'])): ?>
+          <a target='_blank' href='<?=esc($cfg['social']['vk'])?>'>👥 VK</a>
         <?php endif; ?>
-    </main>
+        <?php if(!empty($cfg['social']['instagram'])): ?>
+          <a target='_blank' href='<?=esc($cfg['social']['instagram'])?>'>📷 Instagram</a>
+        <?php endif; ?>
+      </div>
+      <div class='divider'></div>
+      <div class='muted'>📍 Адрес: <?=esc($cfg['address'])?></div>
+      <div class='muted'>🕐 График: <?=esc(implode(' • ', $cfg['workhours']))?></div>
+      <div style='margin-top:12px'>
+        <a class='btn' target='_blank' href='https://yandex.ru/maps/?text=<?=urlencode($cfg['address'])?>'>🗺️ Открыть карту</a>
+        <button class='btn btn-primary' onclick='openCallback()'>📞 Заказать звонок</button>
+      </div>
+    </div>
+    <div class='col-6'>
+      <div class='panel' style='overflow:hidden'>
+        <div style='background:rgba(255,255,255,.75);backdrop-filter:blur(var(--glass-blur));padding:12px 14px;border-bottom:1px solid rgba(0,0,0,.08);display:flex;justify-content:space-between;align-items:center'>
+          <strong>Мы на карте</strong><span class='badge'>Красных Фортов, 49</span>
+        </div>
+        <div style='height:240px;position:relative;display:grid;place-items:center'>
+          <svg viewBox='0 0 600 240' width='100%' height='100%' xmlns='http://www.w3.org/2000/svg'>
+            <rect width='600' height='240' rx='12' fill='#f3f7ff'/>
+            <rect x='20' y='20' width='560' height='200' rx='8' fill='#ffffff' stroke='#e7edf7'/>
+            <path d='M60 80h440M60 140h440' stroke='#d9e5fb' stroke-dasharray='6 6'/>
+            <circle cx='160' cy='180' r='6' fill='<?=esc($brandCol)?>'/><text x='175' y='186' fill='#223660' font-size='12'>OZON</text>
+            <circle cx='250' cy='100' r='6' fill='<?=esc($brandCol)?>'/><text x='265' y='106' fill='#223660' font-size='12'>«Саша Суши»</text>
+            <g><rect x='360' y='120' width='160' height='60' rx='8' fill='#ffffff' stroke='#d9e5fb'/><text x='440' y='155' text-anchor='middle' fill='#0e1220' font-weight='700'>ПРИНТСС</text><circle cx='440' cy='125' r='6' fill='#ff7a00'/></g>
+          </svg>
+          <a href='https://yandex.ru/maps/?text=<?=urlencode($cfg['address'])?>' target='_blank' style='position:absolute;inset:0'></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<footer class='footer'>
+  <div class='wrap'>
+    <div style='display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between'>
+      <div class='muted'>© <?=date('Y')?> <?=esc($cfg['brand'])?>. Все права защищены.</div>
+      <div class='muted'>Персональные данные — только для связи по заказу.</div>
+    </div>
 
-    <script>
-    // Переключение сайдбара для мобильных устройств
-    function toggleSidebar() {
-        const sidebar = document.getElementById('sidebar');
-        sidebar.classList.toggle('show');
+    <?php if(!empty($cfg['business']['show_payment_icons'])): ?>
+    <div class='payment-icons'>
+      <span class='muted' style='font-size:14px;font-weight:600'>Принимаем к оплате:</span>
+      <svg width='50' height='32' viewBox='0 0 50 32' xmlns='http://www.w3.org/2000/svg'>
+        <rect width='50' height='32' rx='4' fill='#1a5fb0'/>
+        <rect x='8' y='12' width='10' height='8' rx='1' fill='white'/>
+        <rect x='20' y='12' width='10' height='8' rx='1' fill='white'/>
+        <rect x='32' y='12' width='10' height='8' rx='1' fill='white'/>
+        <text x='25' y='26' text-anchor='middle' fill='white' font-size='6' font-weight='bold'>МИР</text>
+      </svg>
+
+      <svg width='50' height='32' viewBox='0 0 50 32' xmlns='http://www.w3.org/2000/svg'>
+        <rect width='50' height='32' rx='4' fill='#000'/>
+        <circle cx='18' cy='16' r='8' fill='#eb001b' opacity='0.8'/>
+        <circle cx='32' cy='16' r='8' fill='#f79e1b' opacity='0.8'/>
+        <path d='M25 10c2 2 2 4 2 6s0 4-2 6c-2-2-2-4-2-6s0-4 2-6z' fill='#ff5f00'/>
+      </svg>
+
+      <svg width='50' height='32' viewBox='0 0 50 32' xmlns='http://www.w3.org/2000/svg'>
+        <rect width='50' height='32' rx='4' fill='#1434CB'/>
+        <path d='M10 12l3 8h3l3-8h-3l-1.5 5-1.5-5h-3zm8 0l-1 8h3l1-8h-3zm6 0v8h3v-3h1l1 3h3l-1-3c1-1 1-2 1-3s-1-2-2-2h-6zm10 0l-2 8h3l.5-2h2l.5 2h3l-3-8h-4z' fill='white'/>
+      </svg>
+
+      <svg width='50' height='32' viewBox='0 0 50 32' xmlns='http://www.w3.org/2000/svg'>
+        <rect width='50' height='32' rx='4' fill='#FF6900'/>
+        <circle cx='16' cy='16' r='6' fill='white'/>
+        <circle cx='34' cy='16' r='6' fill='white'/>
+        <path d='M25 10v12l-3-3m3 0l3-3' stroke='white' stroke-width='2' fill='none'/>
+        <text x='25' y='26' text-anchor='middle' fill='white' font-size='5' font-weight='bold'>СБП</text>
+      </svg>
+
+      <?php if(!empty($cfg['yukassa']['enabled'])): ?>
+      <svg width='50' height='32' viewBox='0 0 50 32' xmlns='http://www.w3.org/2000/svg'>
+        <rect width='50' height='32' rx='4' fill='#ffdd2d'/>
+        <path d='M10 10l15 6-15 6V10zm20 2v12l-8-6 8-6z' fill='#000'/>
+        <text x='25' y='26' text-anchor='middle' fill='#000' font-size='5' font-weight='bold'>ЮКасса</text>
+      </svg>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <?php if(!empty($cfg['business']['show_requisites'])): ?>
+    <div class='business-info'>
+      <strong><?=esc($cfg['business']['legal_name'])?></strong>
+      <div class='row'>
+        <?php if($cfg['business']['inn']): ?><div>ИНН: <?=esc($cfg['business']['inn'])?></div><?php endif; ?>
+        <?php if($cfg['business']['ogrn']): ?><div>ОГРНИП: <?=esc($cfg['business']['ogrn'])?></div><?php endif; ?>
+        <?php if($cfg['business']['bank']): ?><div>Банк: <?=esc($cfg['business']['bank'])?></div><?php endif; ?>
+        <?php if($cfg['business']['bik']): ?><div>БИК: <?=esc($cfg['business']['bik'])?></div><?php endif; ?>
+        <?php if($cfg['business']['account']): ?><div>Р/с: <?=esc($cfg['business']['account'])?></div><?php endif; ?>
+      </div>
+    </div>
+    <?php endif; ?>
+  </div>
+</footer>
+
+<!-- Плавающие кнопки (скрыты на мобильных) -->
+<div class='floatactions'>
+  <a class='fab fab-callback' onclick='openCallback()'>📞 Обратный звонок</a>
+  <a class='fab' href='tel:+79522003990'>📱 <?=esc($cfg['phone_display'])?></a>
+  <a class='fab' target='_blank' href='https://wa.me/79522003990'>💚 WhatsApp</a>
+  <a class='fab' href='tg://resolve?phone=79522003990'>💙 Telegram</a>
+  <a class='fab' onclick='openChat()'>🤖 Артемий ИИ</a>
+</div>
+
+<!-- ========== УМНЫЙ ЧАТ-БОТ АРТЕМИЙ ========== -->
+<div class='chat-widget' id='chatWidget'>
+  <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>
+    <strong>🤖 Артемий</strong>
+    <button style='background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px' onclick='closeChat()'>✕</button>
+  </div>
+
+  <div class='chat-messages' id='chatMessages'>
+    <div class='chat-message'>
+      <div class='chat-bubble' style='background:rgba(255,138,0,.15);color:var(--text);padding:8px 12px;border-radius:12px;display:inline-block;max-width:100%'>
+        Привет! Я Артемий, ваш умный помощник по печати. Понимаю любую фраз! 😊<br><br>
+        Спрашивайте что угодно про наши услуги!
+      </div>
+    </div>
+  </div>
+
+  <!-- Быстрые кнопки -->
+  <div class='chat-quick-buttons'>
+    <button class='chat-quick-btn' onclick='quickChat("Сколько стоят визитки?")'>💰 Цены</button>
+    <button class='chat-quick-btn' onclick='quickChat("Какие сроки печати?")'>⏰ Сроки</button>
+    <button class='chat-quick-btn' onclick='quickChat("Есть доставка?")'>🚚 Доставка</button>
+    <button class='chat-quick-btn' onclick='quickChat("Какие файлы принимаете?")'>📁 Файлы</button>
+  </div>
+
+  <!-- Мобильные кнопки действий в чате -->
+  <div class='chat-mobile-actions'>
+    <a class='fab' onclick='openCallback()'>📞 Звонок</a>
+    <a class='fab' href='tel:+79522003990'>📱 Телефон</a>
+    <a class='fab' target='_blank' href='https://wa.me/79522003990'>💚 WhatsApp</a>
+    <a class='fab' href='tg://resolve?phone=79522003990'>💙 Telegram</a>
+  </div>
+
+  <!-- Поле ввода -->
+  <div class='chat-input-row'>
+    <textarea class='chat-input' id='chatInput' placeholder='Напишите что-нибудь... (понимаю любой сленг!)' rows='1'></textarea>
+    <button class='chat-send' onclick='sendChatMessage()'>📩</button>
+  </div>
+
+  <!-- Подсказка -->
+  <div style='margin-top:6px;font-size:11px;color:var(--muted);text-align:center'>
+   Я еще молодой только учусь поэтому не ругайтесь 🧠
+  </div>
+</div>
+
+<!-- Order modal -->
+<dialog id='orderModal'>
+  <form method='dialog'><div class='modal-head'><strong>Заявка на заказ</strong><button class='btn' onclick='document.getElementById("orderModal").close();return false;'>Закрыть ✕</button></div></form>
+  <div class='modal-body'>
+    <form id='orderForm' enctype='multipart/form-data'>
+      <input type='hidden' name='mode' value='order'><input type='hidden' name='calc' id='calcHidden'>
+      <div class='form-row'>
+        <div><label>Ваше имя<br><input required name='name' placeholder='Иван'></label></div>
+        <div><label>Телефон<br><input required name='phone' placeholder='+7 9..'></label></div>
+      </div>
+      <div class='form-row'>
+        <div><label>Услуга<br><input required name='service' id='orderService' placeholder='Выбрано из каталога/калькулятора'></label></div>
+        <div><label>Ориент. цена<br><input name='price' id='orderPrice' placeholder='например, 1100 ₽'></label></div>
+      </div>
+      <div><label>Комментарий<br><textarea name='comment' placeholder='Тираж, размеры, сроки...'></textarea></label></div>
+      <div style='margin:8px 0'><label>Прикрепить макет (до 100 МБ)<input type='file' name='file' style='margin-top:8px'></label></div>
+
+      <?php if(!empty($cfg['yukassa']['enabled'])): ?>
+      <div class='payment-methods'>
+        <div style='font-weight:600;margin-bottom:6px'>Способ оплаты:</div>
+        <div class='payment-option'>
+          <input type='radio' id='payment_offline' name='payment_method' value='offline' checked>
+          <label for='payment_offline'>При получении (нал/карта)</label>
+        </div>
+        <div class='payment-option'>
+          <input type='radio' id='payment_online' name='payment_method' value='online'>
+          <label for='payment_online'>Онлайн оплата (ЮКасса)</label>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <div class='divider'></div>
+      <div style='display:flex;gap:12px;flex-wrap:wrap;align-items:center'>
+        <button class='btn btn-primary' type='submit'>Отправить заявку</button>
+        <span id='formStatus' class='muted'></span>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Callback modal -->
+<dialog id='callbackModal'>
+  <form method='dialog'><div class='modal-head'><strong>Обратный звонок</strong><button class='btn' onclick='document.getElementById("callbackModal").close();return false;'>Закрыть ✕</button></div></form>
+  <div class='modal-body'>
+    <form id='callbackForm'>
+      <input type='hidden' name='mode' value='callback'>
+      <div class='form-row'>
+        <div><label>Ваше имя<br><input required name='name' placeholder='Иван'></label></div>
+        <div><label>Телефон<br><input required name='phone' placeholder='+7 9..'></label></div>
+      </div>
+      <div><label>Удобное время для звонка<br><input name='time' placeholder='например, после 15:00' type='text'></label></div>
+      <div class='muted' style='margin:12px 0;font-size:13px'>💡 Перезвоним в течение 15 минут в рабочее время. Звонок бесплатный!</div>
+      <div class='divider'></div>
+      <div style='display:flex;gap:12px;flex-wrap:wrap;align-items:center'>
+        <button class='btn btn-primary' type='submit'>Заказать звонок</button>
+        <span id='callbackStatus' class='muted'></span>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Review modal -->
+<dialog id='reviewModal'>
+  <form method='dialog'><div class='modal-head'><strong>Оставить отзыв</strong><button class='btn' onclick='document.getElementById("reviewModal").close();return false;'>Закрыть ✕</button></div></form>
+  <div class='modal-body'>
+    <form id='reviewForm'>
+      <input type='hidden' name='mode' value='review'>
+      <div class='form-row'>
+        <div><label>Ваше имя<br><input required name='name' placeholder='Ваше имя'></label></div>
+        <div><label>Оценка<br>
+          <select required name='rating'>
+            <option value=''>Выберите оценку</option>
+            <option value='5'>⭐⭐⭐⭐⭐ Отлично</option>
+            <option value='4'>⭐⭐⭐⭐ Хорошо</option>
+            <option value='3'>⭐⭐⭐ Нормально</option>
+            <option value='2'>⭐⭐ Плохо</option>
+            <option value='1'>⭐ Ужасно</option>
+          </select>
+        </label></div>
+      </div>
+      <div><label>Ваш отзыв<br><textarea required name='text' placeholder='Расскажите о качестве услуг, сроках выполнения, общении с сотрудниками...'></textarea></label></div>
+      <div class='muted' style='margin:12px 0;font-size:13px'>💡 Отзыв появится на сайте после модерации администратором.</div>
+      <div class='divider'></div>
+      <div style='display:flex;gap:12px;flex-wrap:wrap;align-items:center'>
+        <button class='btn btn-primary' type='submit'>Отправить отзыв</button>
+        <span id='reviewStatus' class='muted'></span>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<script>
+  // ========== ОСНОВНЫЕ ФУНКЦИИ САЙТА ==========
+
+  // МОБИЛЬНОЕ МЕНЮ
+  function toggleMobileMenu() {
+    const nav = document.getElementById('mobileNav');
+    nav.classList.toggle('show');
+  }
+
+  function openOrder(service, price, calcText){
+    document.getElementById('orderService').value = service || '';
+    document.getElementById('orderPrice').value = price || '';
+    document.getElementById('calcHidden').value = calcText || '';
+    const m = document.getElementById('orderModal'); if (m.showModal) m.showModal(); else m.setAttribute('open','open');
+  }
+
+  function openCallback(){
+    const m = document.getElementById('callbackModal'); if (m.showModal) m.showModal(); else m.setAttribute('open','open');
+  }
+
+  function openReviewModal(){
+    const m = document.getElementById('reviewModal'); if (m.showModal) m.showModal(); else m.setAttribute('open','open');
+  }
+
+  function showInfo(title){
+    const info = {
+      'Фото на документы':'Фото за 5–10 минут. Электронная версия бесплатно. Стандартные форматы.',
+      'Печать документов A4/A3':'Срочная распечатка, копирование и сканирование. Ч/б и цветная печать.',
+      'Печать визиток':'Мелованная/дизайнерская бумага, ламинация, скругление.',
+      'Печать листовок':'A6/A5/A4, одно/двусторонние, тираж от 100 шт.',
+      'Печать баннеров':'ПВХ 440 г/м², люверсы, проварка. Срочно за 2–4 часа.',
+      'Печать плакатов/постеров':'A3/A2/A1, плотная бумага, сочная печать.',
+      'Печать фотографий':'10×15, 15×21, 20×30 — мат/глянец.',
+      'Печать наклеек/стикеров':'Пленка ПВХ, фигурная резка.',
+      'Печать на футболках':'DTF/термотрансфер. От 1 шт.',
+      'Печать на кружках':'Сублимация, белые и цветные кружки.',
+      'Ламинация и брошюровка':'Папки, пружина, ламинация 80–250 мкм.',
+      'Штампы/печати':'Изготовление в день заказа.',
+      'Печать на пленке':'Для витрин и авто, мат/глянец.',
+      'Проявка пленки':'Бережная обработка, быстро.',
+      'Копирование и сканирование':'Скан до A3, на e-mail/телефон.',
+      'Печать на холсте':'Натяжка на подрамник, по желанию лак.'
+    };
+    alert((title||'Услуга')+'\n\n'+(info[title]||'Подробнее уточняйте у менеджера.'));
+  }
+
+  // FAQ
+  function toggleFaq(element) {
+    const item = element.parentElement;
+    const answer = item.querySelector('.faq-answer');
+
+    // Закрываем все остальные
+    document.querySelectorAll('.faq-item.active').forEach(activeItem => {
+      if (activeItem !== item) {
+        activeItem.classList.remove('active');
+      }
+    });
+
+    // Переключаем текущий
+    item.classList.toggle('active');
+  }
+
+  // ========== УМНЫЙ ЧАТ-БОТ АРТЕМИЙ ==========
+
+  let chatOpened = false;
+  let messageHistory = [];
+
+  function openChat() {
+    const widget = document.getElementById('chatWidget');
+    widget.classList.add('active');
+
+    if (!chatOpened) {
+      chatOpened = true;
+      // Добавляем приветственное сообщение
+      setTimeout(() => {
+        addAIMessage('Готов помочь! Можете спрашивать на любом языке - понимаю сленг, мат, бабушкины фразы. Попробуйте: "че по ценам" или "батенька, подскажите про фото" 😄');
+      }, 1000);
     }
 
-    // Закрытие сайдбара при клике вне его на мобильных
-    document.addEventListener('click', function(event) {
-        const sidebar = document.getElementById('sidebar');
-        const toggleBtn = event.target.closest('.sidebar-toggle');
+    // Фокусируемся на поле ввода
+    setTimeout(() => {
+      document.getElementById('chatInput').focus();
+    }, 300);
+  }
 
-        if (!sidebar.contains(event.target) && !toggleBtn && window.innerWidth <= 768) {
-            sidebar.classList.remove('show');
+  function closeChat() {
+    document.getElementById('chatWidget').classList.remove('active');
+  }
+
+  function quickChat(text) {
+    document.getElementById('chatInput').value = text;
+    sendChatMessage();
+  }
+
+  function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const messages = document.getElementById('chatMessages');
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    // Добавляем сообщение пользователя
+    addUserMessage(message);
+    messageHistory.push({role: 'user', content: message});
+
+    input.value = '';
+    autoResizeTextarea(input);
+
+    // Показываем индикатор печати
+    const typingId = showTypingIndicator();
+
+    // Отправляем запрос к умному ИИ
+    fetch(location.href, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'mode=ai_chat&message=' + encodeURIComponent(message)
+    })
+    .then(response => response.json())
+    .then(data => {
+      hideTypingIndicator(typingId);
+
+      if (data.ok) {
+        addAIMessage(data.response, true);
+        messageHistory.push({role: 'assistant', content: data.response});
+      } else {
+        addAIMessage('Извините, произошла ошибка: ' + (data.message || 'Не удалось получить ответ'), false);
+      }
+    })
+    .catch(error => {
+      console.error('Chat error:', error);
+      hideTypingIndicator(typingId);
+
+      // Fallback к простому ответу
+      const fallbackResponse = getSimpleFallback(message.toLowerCase());
+      addAIMessage(fallbackResponse, false);
+    });
+  }
+
+  function addUserMessage(message) {
+    const messages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message chat-message-user';
+    messageDiv.innerHTML = `<div class='chat-bubble'>${escapeHtml(message)}</div>`;
+    messages.appendChild(messageDiv);
+    scrollChatToBottom();
+  }
+
+  function addAIMessage(message, withFeedback = false) {
+    const messages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message';
+
+    let feedbackHTML = '';
+    if (withFeedback) {
+      const messageId = 'msg_' + Date.now();
+      feedbackHTML = `
+        <div class='chat-feedback' data-message-id='${messageId}'>
+          <button class='feedback-btn' onclick='rateFeedback(this, 5)' title='Отлично'>👍</button>
+          <button class='feedback-btn' onclick='rateFeedback(this, 1)' title='Плохо'>👎</button>
+        </div>
+      `;
+    }
+
+    messageDiv.innerHTML = `
+      <div class='chat-bubble'>${escapeHtml(message)}</div>
+      ${feedbackHTML}
+    `;
+
+    messages.appendChild(messageDiv);
+    scrollChatToBottom();
+  }
+
+  function showTypingIndicator() {
+    const messages = document.getElementById('chatMessages');
+    const typingDiv = document.createElement('div');
+    const typingId = 'typing_' + Date.now();
+    typingDiv.id = typingId;
+    typingDiv.className = 'chat-message';
+    typingDiv.innerHTML = '<div class="chat-typing">Артемий печатает...</div>';
+    messages.appendChild(typingDiv);
+    scrollChatToBottom();
+    return typingId;
+  }
+
+  function hideTypingIndicator(typingId) {
+    const typingDiv = document.getElementById(typingId);
+    if (typingDiv) typingDiv.remove();
+  }
+
+  function scrollChatToBottom() {
+    const messages = document.getElementById('chatMessages');
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function rateFeedback(button, rating) {
+    const feedbackDiv = button.parentElement;
+    const messageId = feedbackDiv.dataset.messageId;
+
+    // Отправляем фидбек на сервер
+    fetch(location.href, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: `mode=ai_feedback&rating=${rating}&message=${messageId}`
+    });
+
+    // Обновляем UI
+    feedbackDiv.innerHTML = rating >= 4 ? 
+      '<span style="color: #4ade80">👍 Спасибо!</span>' : 
+      '<span style="color: #f87171">👎 Учтем!</span>';
+  }
+
+  // Fallback ответы для случаев когда сервер недоступен
+  function getSimpleFallback(message) {
+    if (message.includes('че') || message.includes('что') || message.includes('шо')) {
+      return 'Слушай, я помощник типографии. Что по услугам интересует? Понял?';
+    }
+    if (message.includes('цена') || message.includes('стоимость') || message.includes('сколько') || message.includes('бабки')) {
+      return 'Короче, по ценам: фото на документы 400₽, визитки от 900₽, баннеры от 1100₽. Что конкретно надо?';
+    }
+    if (message.includes('время') || message.includes('срок') || message.includes('быстро') || message.includes('долго')) {
+      return 'По срокам: фото 5 минут, баннеры 2-4 часа, визитки за день. Что срочное?';
+    }
+    if (message.includes('доставка') || message.includes('привезти')) {
+      return 'Доставляем по Сосновому Бору: центр бесплатно, окраины 150-300₽. Куда надо?';
+    }
+    if (message.includes('привет') || message.includes('здравствуй') || message.includes('батенька') || message.includes('голубчик')) {
+      return 'Привет! Я Артемий, помощник нашей типографии. Чем помочь с печатными делами?';
+    }
+    if (message.includes('спасибо') || message.includes('спс') || message.includes('благодарю')) {
+      return 'Пожалуйста! Всегда рад помочь. Если еще вопросы будут - спрашивайте!';
+    }
+    if (message.includes('файл') || message.includes('формат') || message.includes('макет')) {
+      return 'По файлам: лучше PDF в CMYK, 300 dpi, с вылетами. Но любые принимаем - проверим и подскажем!';
+    }
+    return 'Понял вас! По всем вопросам звоните +7 (952) 200-39-90 или спрашивайте здесь - помогу чем смогу!';
+  }
+
+  // Автоматическое изменение размера поля ввода
+  function autoResizeTextarea(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
+  }
+
+  // Экранирование HTML
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Обработка Enter в чате
+  document.getElementById('chatInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  // Автоматическое изменение размера поля ввода
+  document.getElementById('chatInput').addEventListener('input', function() {
+    autoResizeTextarea(this);
+  });
+
+  // Калькулятор доставки
+  function calculateDelivery() {
+    const address = document.getElementById('deliveryAddress').value.toLowerCase();
+    const priceField = document.getElementById('deliveryPrice');
+
+    if (!address) {
+      priceField.value = 'Введите адрес';
+      return;
+    }
+
+    if (address.includes('центр') || address.includes('красных фортов') || address.includes('ленинградская')) {
+      priceField.value = 'Бесплатно';
+    } else if (address.includes('окраина') || address.includes('дачи') || address.includes('сосновка')) {
+      priceField.value = '300 ₽';
+    } else {
+      priceField.value = '150-300 ₽';
+    }
+  }
+
+  document.getElementById('deliveryAddress').addEventListener('input', calculateDelivery);
+
+  // Обработка форм
+  document.getElementById('orderForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const st=document.getElementById('formStatus'); st.textContent='Отправляем...'; st.className='muted';
+    try{
+      const data=new FormData(e.currentTarget);
+      const res=await fetch(location.href,{method:'POST',body:data});
+      const j=await res.json();
+      st.textContent=j.message|| (j.ok?'Готово':'Ошибка');
+      st.className=j.ok?'ok':'bad';
+      if(j.ok){
+        if(j.payment && j.payment_url) {
+          st.textContent += ' Переходим к оплате...';
+          setTimeout(() => {
+            window.open(j.payment_url, '_blank');
+          }, 1000);
         }
-    });
+        e.currentTarget.reset();
+        setTimeout(()=>document.getElementById('orderModal').close(),j.payment ? 3000 : 1200);
+      }
+    }catch(_){ st.textContent='Сбой сети. Попробуйте позже.'; st.className='bad'; }
+  });
 
-    // Показ уведомлений
-    function showNotification(message, type = 'info', duration = 4000) {
-        const alertTypes = {
-            'success': 'alert-success',
-            'error': 'alert-danger', 
-            'warning': 'alert-warning',
-            'info': 'alert-info'
-        };
+  document.getElementById('callbackForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const st=document.getElementById('callbackStatus'); st.textContent='Отправляем...'; st.className='muted';
+    try{
+      const data=new FormData(e.currentTarget);
+      const res=await fetch(location.href,{method:'POST',body:data});
+      const j=await res.json();
+      st.textContent=j.message|| (j.ok?'Готово':'Ошибка');
+      st.className=j.ok?'ok':'bad';
+      if(j.ok){
+        e.currentTarget.reset();
+        setTimeout(()=>document.getElementById('callbackModal').close(),1500);
+      }
+    }catch(_){ st.textContent='Сбой сети. Попробуйте позже.'; st.className='bad'; }
+  });
 
-        const icons = {
-            'success': 'fa-check-circle',
-            'error': 'fa-exclamation-circle',
-            'warning': 'fa-exclamation-triangle', 
-            'info': 'fa-info-circle'
-        };
+  document.getElementById('reviewForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const st=document.getElementById('reviewStatus'); st.textContent='Отправляем...'; st.className='muted';
+    try{
+      const data=new FormData(e.currentTarget);
+      const res=await fetch(location.href,{method:'POST',body:data});
+      const j=await res.json();
+      st.textContent=j.message|| (j.ok?'Готово':'Ошибка');
+      st.className=j.ok?'ok':'bad';
+      if(j.ok){
+        e.currentTarget.reset();
+        setTimeout(()=>document.getElementById('reviewModal').close(),2000);
+      }
+    }catch(_){ st.textContent='Сбой сети. Попробуйте позже.'; st.className='bad'; }
+  });
 
-        const notification = document.createElement('div');
-        notification.className = `alert ${alertTypes[type]} alert-dismissible fade show`;
-        notification.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);';
-        notification.innerHTML = `
-            <i class="fas ${icons[type]} me-2"></i>
-            ${message}
-            <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
-        `;
+  // ========== КАЛЬКУЛЯТОР ==========
+  const el=(s)=>document.querySelector(s);
+  const q=(h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild;}
+  const rub=(n)=>new Intl.NumberFormat('ru-RU').format(Math.round(n))+' ₽';
+  const dynA=document.getElementById('calcDynamicA'), dynMore=document.getElementById('calcMore'), note=document.getElementById('calcNote'), out=document.getElementById('calcPrice');
 
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.classList.remove('show');
-                setTimeout(() => notification.remove(), 300);
-            }
-        }, duration);
+  function renderCalc(){
+    const t=el('#calcType').value; dynA.innerHTML=''; dynMore.innerHTML=''; note.textContent=''; out.textContent='0 ₽';
+    if(t==='cards'){
+      dynA.appendChild(q(`<label>Тираж<br><select id='cc_qty'><option>100</option><option>200</option><option>500</option><option>1000</option><option>2000</option></select></label>`));
+      dynMore.appendChild(q(`<div><label>Стороны<br><select id='cc_side'><option value='1'>1 сторона</option><option value='2'>2 стороны</option></select></label></div>`));
+      dynMore.appendChild(q(`<div><label>Бумага<br><select id='cc_paper'><option value='std'>Мелованная 300 г/м²</option><option value='prm'>Премиум</option></select></label></div>`));
+      dynMore.appendChild(q(`<div><label>Ламинация<br><select id='cc_lam'><option value='none'>Нет</option><option value='mat'>Матовая</option><option value='gloss'>Глянец</option></select></label></div>`));
+      note.textContent='Срок: 1 день. Макет PDF/JPG, 300 dpi, вылеты 2 мм.';
+    } else if(t==='flyers'){
+      dynA.appendChild(q(`<label>Формат<br><select id='fl_fmt'><option value='A6'>A6</option><option value='A5'>A5</option><option value='A4'>A4</option></select></label>`));
+      dynMore.appendChild(q(`<div><label>Тираж<br><input id='fl_qty' type='number' value='100' min='50' step='50'></label></div>`));
+      dynMore.appendChild(q(`<div><label>Стороны<br><select id='fl_side'><option value='1'>1 сторона</option><option value='2'>2 стороны</option></select></label></div>`));
+      dynMore.appendChild(q(`<div><label>Бумага<br><select id='fl_paper'><option value='130'>130 г/м²</option><option value='170'>170 г/м²</option></select></label></div>`));
+      note.textContent='Срок: 1-2 дня. Бумага офсетная/мелованная.';
+    } else if(t==='banner'){
+      dynA.appendChild(q(`<label>Ширина (м)<br><input id='bn_w' type='number' step='0.1' value='2' min='0.3'></label>`));
+      dynMore.appendChild(q(`<div><label>Высота (м)<br><input id='bn_h' type='number' step='0.1' value='1' min='0.3'></label></div>`));
+      dynMore.appendChild(q(`<div><label>Люверсы<br><select id='bn_eyes'><option value='0'>Нет</option><option value='1'>Да</option></select></label></div>`));
+      dynMore.appendChild(q(`<div><label>Проварка<br><select id='bn_weld'><option value='0'>Нет</option><option value='1'>Да</option></select></label></div>`));
+      note.textContent='Срок: 2–4 часа. ПВХ-баннер 440 г/м².';
+    } else if(t==='photo'){
+      dynA.appendChild(q(`<label>Размер<br><select id='ph_size'><option value='10x15'>10×15</option><option value='15x21'>15×21</option><option value='20x30'>20×30</option><option value='30x40'>30×40</option></select></label>`));
+      dynMore.appendChild(q(`<div><label>Тираж<br><input id='ph_qty' type='number' value='10' min='1'></label></div>`));
+      dynMore.appendChild(q(`<div><label>Бумага<br><select id='ph_paper'><option value='mat'>Матовая</option><option value='gloss'>Глянцевая</option></select></label></div>`));
+      dynMore.appendChild(q(`<div><label>Срочность<br><select id='ph_urgent'><option value='0'>Обычно (10 мин)</option><option value='1'>Срочно (+50%)</option></select></label></div>`));
+      note.textContent='Срок: 10 минут обычно, 5 минут срочно.';
+    } else if(t==='stickers'){
+      dynA.appendChild(q(`<label>Площадь (м²)<br><input id='st_area' type='number' step='0.01' value='1' min='0.01'></label>`));
+      dynMore.appendChild(q(`<div><label>Тип пленки<br><select id='st_type'><option value='white'>Белая глянец</option><option value='transparent'>Прозрачная</option><option value='matte'>Белая мат</option></select></label></div>`));
+      dynMore.appendChild(q(`<div><label>Фигурная резка<br><select id='st_cut'><option value='0'>Нет</option><option value='1'>Да (+30%)</option></select></label></div>`));
+      note.textContent='Срок: 1-2 дня. Самоклеящаяся пленка ПВХ.';
+    } else if(t==='stamps'){
+      dynA.appendChild(q(`<label>Тип штампа<br><select id='stamp_type'><option value='auto'>Автоматический</option><option value='wood'>Деревянный</option><option value='pocket'>Карманный</option></select></label>`));
+      dynMore.appendChild(q(`<div><label>Размер<br><select id='stamp_size'><option value='small'>До 30×12</option><option value='medium'>До 47×18</option><option value='large'>До 58×22</option></select></label></div>`));
+      dynMore.appendChild(q(`<div><label>Срочность<br><select id='stamp_urgent'><option value='0'>1-2 дня</option><option value='1'>В день заказа (+500₽)</option></select></label></div>`));
+      note.textContent='Изготовление штампов и печатей. Оснастки в комплекте.';
     }
+    dynA.oninput=dynMore.oninput=calcPrice;
+    calcPrice();
+  }
 
-    // Инициализация при загрузке
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('🚀 АкваАдмин МЕГА система загружена');
-        console.log('📊 Статистика обновлена');
-        console.log('🤖 ИИ системы активированы');
+  function calcPrice(){
+    const t=el('#calcType').value; let price=0, text='';
+    if(t==='cards'){
+      const qty=+el('#cc_qty').value, side=+el('#cc_side').value, paper=el('#cc_paper').value, lam=el('#cc_lam').value;
+      let base=900*(qty/100);
+      if(side===2) base*=1.3;
+      if(paper==='prm') base*=1.4;
+      if(lam!=='none') base+=400*(qty/100);
+      price=base;
+      text=`Визитки ${qty} шт, ${side} стор., ${paper==='prm'?'премиум':'мелованная'}, ламинация: ${lam==='none'?'нет':lam}`;
+    }
+    if(t==='flyers'){
+      const fmt=el('#fl_fmt').value, qty=Math.max(50, +el('#fl_qty').value), side=+el('#fl_side').value, paper=el('#fl_paper').value;
+      let rate={'A6':3.5,'A5':5,'A4':8}[fmt]||5;
+      let base=rate*qty;
+      if(side===2) base*=1.6;
+      if(paper==='170') base*=1.2;
+      price=base;
+      text=`Листовки ${fmt}, ${qty} шт, ${side} стор., ${paper} г/м²`;
+    }
+    if(t==='banner'){
+      const w=Math.max(0.3,parseFloat(el('#bn_w').value||0)), h=Math.max(0.3,parseFloat(el('#bn_h').value||0));
+      const eyes=el('#bn_eyes').value==='1', weld=el('#bn_weld').value==='1';
+      const area=w*h;
+      let base=Math.max(1100, area*380);
+      if(eyes){ const per=Math.ceil((w*2+h*2)/0.5); base+=per*12; }
+      if(weld) base+=180;
+      price=base;
+      text=`Баннер ${w}×${h} м${eyes?', люверсы':''}${weld?', проварка':''}`;
+    }
+    if(t==='photo'){
+      const size=el('#ph_size').value, qty=Math.max(1,+el('#ph_qty').value), urgent=el('#ph_urgent').value==='1';
+      const rate={'10x15':30,'15x21':60,'20x30':120,'30x40':200}[size]||30;
+      let base=rate*qty;
+      if(urgent) base*=1.5;
+      price=base;
+      text=`Фото ${size}, ${qty} шт${urgent?', срочно':''}`;
+    }
+    if(t==='stickers'){
+      const area=Math.max(0.01,parseFloat(el('#st_area').value||0)), type=el('#st_type').value, cut=el('#st_cut').value==='1';
+      let rate=350;
+      if(type==='transparent') rate=420;
+      if(type==='matte') rate=380;
+      let base=area*rate;
+      if(cut) base*=1.3;
+      price=base;
+      text=`Наклейки ${area} м², ${type}${cut?', фигурная резка':''}`;
+    }
+    if(t==='stamps'){
+      const type=el('#stamp_type').value, size=el('#stamp_size').value, urgent=el('#stamp_urgent').value==='1';
+      let base={'auto':1800,'wood':1200,'pocket':2200}[type]||1800;
+      if(size==='medium') base+=300;
+      if(size==='large') base+=600;
+      if(urgent) base+=500;
+      price=base;
+      text=`Штамп ${type}, ${size}${urgent?', срочно':''}`;
+    }
+    out.textContent=rub(price);
+    document.getElementById('calcOrder').onclick=()=>openOrder('Расчёт: '+text, rub(price), text);
+    document.getElementById('calcReset').onclick=()=>renderCalc();
+  }
 
-        // Приветственное уведомление только на главной
-        <?php if ($page === 'dashboard'): ?>
-        setTimeout(() => {
-            showNotification('🚀 Добро пожаловать в АкваАдмин МЕГА! Все системы готовы к работе.', 'success');
-        }, 1000);
-        <?php endif; ?>
-    });
-    </script>
+  document.getElementById('calcType').addEventListener('change', renderCalc); renderCalc();
+</script>
+
+<script type='application/ld+json'>
+{"@context":"https://schema.org","@type":"CopyShop","name":"<?=esc($cfg['brand'])?>","description":"<?=esc($seoDescription)?>","address":{"@type":"PostalAddress","streetAddress":"ул. Красных Фортов, 49","addressLocality":"Сосновый Бор","addressCountry":"RU"},"telephone":"+79522003990","url":"<?=esc($cfg['site'])?>","openingHours":["Mo-Fr 10:00-20:00","Sa-Su 11:00-18:00"],"priceRange":"₽₽","paymentAccepted":["Cash","Credit Card"<?=!empty($cfg['yukassa']['enabled'])?',"Online Payment"':''?>]}
+</script>
 </body>
 </html>
